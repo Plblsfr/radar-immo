@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radar Immo</title>
+<link rel="icon" href="../icons/icon32.png">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><img src="../icons/icon48.png" alt=""><div><h1>Radar Immo</h1><span class="m" id="summary"></span></div></div>
+    <nav id="tabs" aria-label="Sections">
+      <button data-tab="annonces" class="on">Annonces</button>
+      <button data-tab="comparer">Comparer<span id="cmpCount" class="count"></span></button>
+      <button data-tab="recherches">Recherches</button>
+      <button data-tab="criteres">Critères</button>
+      <button data-tab="donnees">Données</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ANNONCES -->
+  <section id="tab-annonces" class="tab on">
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Rechercher un quartier, un titre, une note…" aria-label="Rechercher">
+      <select id="fScope" aria-label="Portée"><option value="saved">Sauvegardées</option><option value="all">Toutes les annonces vues</option></select>
+      <select id="fStatus" aria-label="Statut"><option value="">Tous les statuts</option></select>
+      <select id="fSort" aria-label="Tri">
+        <option value="score">Meilleur score</option><option value="recent">Plus récentes</option>
+        <option value="price">Prix croissant</option><option value="pm2">Prix/m² croissant</option><option value="drop">Plus grosses baisses</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="fHideElim" checked> Masquer hors critères</label>
+    </div>
+    <div id="list" class="cards"></div>
+    <div id="empty" class="empty" hidden>
+      <h2>Aucune annonce pour l'instant</h2>
+      <p class="lead">Ouvre une annonce sur Leboncoin, SeLoger, PAP, Bien'ici, Ouest-France Immo… Radar Immo l'analyse tout seul. Clique sur « Sauvegarder » dans le panneau pour la retrouver ici.</p>
+      <button class="btn primary" data-goto="recherches">Lancer mes recherches</button>
+    </div>
+  </section>
+
+  <!-- COMPARER -->
+  <section id="tab-comparer" class="tab">
+    <h2 class="section-title">Comparer</h2>
+    <p class="lead">Coche « Comparer » sur 2 à 4 annonces. La meilleure valeur de chaque ligne est mise en avant.</p>
+    <div id="compareWrap"></div>
+  </section>
+
+  <!-- RECHERCHES -->
+  <section id="tab-recherches" class="tab">
+    <div class="grid2">
+      <div>
+        <h2 class="section-title">Mes recherches</h2>
+        <p class="lead">Filtre ta recherche sur chaque site, puis colle ici l'URL de la page de résultats. « Tout ouvrir » lance ta tournée en un clic.</p>
+        <div class="panel">
+          <div id="searches"></div>
+          <form id="addSearch" class="row" style="margin-top:16px">
+            <input id="sName" placeholder="Nom" style="flex:1" aria-label="Nom de la recherche">
+            <input id="sUrl" placeholder="https://…" style="flex:2" type="url" required aria-label="URL">
+            <button class="btn">Ajouter</button>
+          </form>
+        </div>
+        <div class="row" style="margin-top:16px"><button class="btn primary" id="openAll">Tout ouvrir</button></div>
+      </div>
+      <div>
+        <h2 class="section-title">Points de départ</h2>
+        <p class="lead">Leboncoin est déjà filtré avec tes critères. Pour les autres sites, applique tes filtres puis enregistre l'URL.</p>
+        <div class="panel" id="starts"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CRITERES -->
+  <section id="tab-criteres" class="tab">
+    <form id="crit">
+      <div class="card-sec">
+        <h2 class="section-title">Ce que je cherche</h2>
+        <div class="fields">
+          <label>Ville<input name="city"></label>
+          <label>Codes postaux<input name="postalCodes"></label>
+          <label>Type<select name="propertyType"><option value="appartement">Appartement</option><option value="maison">Maison</option><option value="">Peu importe</option></select></label>
+          <label>Prix min (€)<input name="priceMin" type="number" step="1000"></label>
+          <label>Prix max (€)<input name="priceMax" type="number" step="1000"></label>
+          <label>Tolérance au-dessus du max (%)<input name="priceTolerancePct" type="number" step="1"></label>
+          <label>Surface min (m²)<input name="surfaceMin" type="number"></label>
+          <label>DPE minimum accepté<select name="dpeMin"></select></label>
+          <label>DPE visé<select name="dpePref"></select></label>
+          <label>Charges max / mois (€)<input name="chargesMaxMonthly" type="number"></label>
+          <label>Prix de référence au m² (€)<input name="refPriceM2" type="number"></label>
+        </div>
+        <div class="rooms"><span>Pièces</span><span id="roomsBox" class="row" style="gap:14px"></span></div>
+        <p class="m small" style="margin:8px 0 0">Prix de référence : médiane des ventes d'appartements de ton secteur. Tu la trouves sur la carte DVF (explore.data.gouv.fr/immobilier).</p>
+      </div>
+
+      <div class="card-sec">
+        <h2 class="section-title">Financement</h2>
+        <div class="fields">
+          <label>Apport (€)<input name="loan.apport" type="number" step="500"></label>
+          <label>Taux du prêt (%)<input name="loan.ratePct" type="number" step="0.05"></label>
+          <label>Durée (ans)<input name="loan.years" type="number"></label>
+          <label>Assurance (% / an)<input name="loan.insurancePct" type="number" step="0.01"></label>
+          <label>Frais de notaire (%)<input name="loan.notaryPct" type="number" step="0.1"></label>
+          <label>Mensualité max (€)<input name="loan.maxMonthly" type="number" step="10"></label>
+        </div>
+        <p class="callout" id="budgetInfo"></p>
+      </div>
+
+      <div class="card-sec">
+        <h2 class="section-title">Quartiers</h2>
+        <p class="lead" style="margin:0">Clique pour faire tourner : <span class="legend"><span class="z">Neutre</span>→<span class="z banned">Banni</span>→<span class="z preferred">Préféré</span></span></p>
+        <p class="m small" style="margin:6px 0 0">Un quartier banni dans l'adresse élimine l'annonce. S'il est seulement cité dans la description, tu as un avertissement.</p>
+        <div id="zones" class="zones"></div>
+        <div class="row" style="margin-top:16px">
+          <input id="zName" placeholder="Nouveau quartier ou secteur" style="flex:1;min-width:200px" aria-label="Nouveau quartier">
+          <input id="zKw" placeholder="Autres mots-clés : rues, résidences… (virgules)" style="flex:2;min-width:240px" aria-label="Mots-clés">
+          <button class="btn" type="button" id="zAdd">Ajouter comme banni</button>
+        </div>
+      </div>
+
+      <div class="card-sec">
+        <h2 class="section-title">Mots-clés</h2>
+        <div class="grid2" style="margin-top:14px">
+          <label class="stack">Atouts (bonus)<textarea name="keywordsGood"></textarea></label>
+          <label class="stack">Points de vigilance (malus)<textarea name="keywordsBad"></textarea></label>
+        </div>
+      </div>
+
+      <div class="card-sec">
+        <h2 class="section-title">Affichage</h2>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+          <label class="chk"><input type="checkbox" name="showPanel"> Afficher le panneau sur les pages d'annonce</label>
+          <label class="chk"><input type="checkbox" name="highlightResults"> Noter et griser les annonces dans les listes de résultats</label>
+        </div>
+      </div>
+      <p class="saved" id="savedMsg" role="status">Critères enregistrés</p>
+    </form>
+  </section>
+
+  <!-- DONNEES -->
+  <section id="tab-donnees" class="tab">
+    <div class="grid2">
+      <div class="panel">
+        <h2 class="section-title">Sauvegarde et export</h2>
+        <p class="lead">Tout reste dans ton navigateur, rien n'est envoyé ailleurs. Exporte de temps en temps pour ne rien perdre.</p>
+        <div class="row">
+          <button class="btn" id="expJson">Exporter (JSON)</button>
+          <button class="btn" id="expCsv">Exporter en CSV</button>
+          <label class="btn">Importer<input type="file" id="impJson" accept="application/json" hidden></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 class="section-title">Réinitialiser</h2>
+        <p class="lead">Ces actions sont définitives.</p>
+        <div class="row">
+          <button class="btn danger" id="purgeSeen">Supprimer les annonces non sauvegardées</button>
+          <button class="btn danger" id="resetAll">Tout effacer</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="detail" aria-label="Détail de l'annonce"></dialog>
+
+<script src="../lib/radar.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

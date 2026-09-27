@@ -1,0 +1,22 @@
+# Dépendances et builds
+node_modules/
+dist/
+*.xpi
+*.crx
+*.pem
+
+# Artefacts de tests
+test-results/
+playwright-report/
+
+# Systèmes et éditeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Clés API (web-ext sign, etc.)
+.env
+.env.*

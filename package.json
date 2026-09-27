@@ -1,0 +1,21 @@
+{
+  "name": "radar-immo",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Extension de navigateur qui note les annonces immobilières selon tes critères, suit les prix et repère les doublons entre sites.",
+  "license": "MIT",
+  "author": "plbls (https://plbls.fr)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/unit/radar.test.cjs",
+    "test:e2e": "node tests/e2e/extension.e2e.mjs",
+    "screenshots": "node tests/e2e/extension.e2e.mjs --screenshots",
+    "build": "node scripts/check.mjs && node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}
