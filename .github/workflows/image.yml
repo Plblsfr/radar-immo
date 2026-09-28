@@ -1,0 +1,41 @@
+name: Image API
+
+# Construit l'image Docker de l'API (server/) et la pousse sur ghcr.io, déclenché manuellement
+# depuis l'onglet Actions. Le tag suit le nom de la branche construite (develop, main…) :
+# c'est RADAR_API_IMAGE_TAG dans server/docker-compose.yml, que Portainer pull.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Build et push ghcr.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag de l'image (slug de la branche)
+        id: tag
+        run: |
+          slug=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-63)
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: true
+          tags: |
+            ghcr.io/plblsfr/radar-immo-api:${{ steps.tag.outputs.slug }}
+            ghcr.io/plblsfr/radar-immo-api:${{ steps.tag.outputs.slug }}-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

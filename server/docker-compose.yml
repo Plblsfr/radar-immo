@@ -1,0 +1,62 @@
+services:
+  radar-immo-api:
+    # Image poussée par .github/workflows/image.yml (déclenché manuellement) vers le registre GitHub
+    # (ghcr.io). Portainer la pull, il ne la build pas. RADAR_API_IMAGE_TAG suit le nom de la branche
+    # construite (develop/main).
+    image: ghcr.io/plblsfr/radar-immo-api:${RADAR_API_IMAGE_TAG:-develop}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Derrière Traefik : l'IP réelle du client vient de X-Forwarded-For.
+      TRUST_PROXY: "true"
+      # Même PostgreSQL que le backend principal (réseau db-network), schéma dédié.
+      # Rôle et schéma à créer une fois avec server/sql/grants.sql.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL requis, voir .env.example}
+      DB_SCHEMA: ${DB_SCHEMA:-radar_immo}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_SSL: ${DB_SSL:-false}
+      MIGRATE_ON_START: ${MIGRATE_ON_START:-true}
+      # Route GET du backend principal qui valide le jeton : 2xx valide, 4xx refusé, 5xx indisponible.
+      # Elle doit renvoyer l'identifiant de l'utilisateur (voir AUTH_USER_ID_PATHS) ou le jeton doit
+      # être un JWT avec « sub ». Pour passer par le réseau Docker interne plutôt que par le nom
+      # d'hôte public, pointer sur le conteneur du backend (ex. http://backend:8080/…).
+      AUTH_VERIFY_URL: ${AUTH_VERIFY_URL:?AUTH_VERIFY_URL requis, voir .env.example}
+      AUTH_HEADER_NAME: ${AUTH_HEADER_NAME:-Authorization}
+      # Préfixe avant le jeton ; vide pour le jeton brut. Un espace est ajouté si absent.
+      AUTH_HEADER_PREFIX: "${AUTH_HEADER_PREFIX-Bearer}"
+      AUTH_TIMEOUT_MS: ${AUTH_TIMEOUT_MS:-3000}
+      AUTH_CACHE_TTL_MS: ${AUTH_CACHE_TTL_MS:-30000}
+      AUTH_USER_ID_PATHS: ${AUTH_USER_ID_PATHS:-id,userId,user_id,sub,user.id,data.id}
+      AUTH_USER_ID_FROM_JWT: ${AUTH_USER_ID_FROM_JWT:-true}
+      # Origines du front-end ; les extensions (chrome-extension://, moz-extension://) sont
+      # autorisées en plus. CORS_EXTENSION_IDS restreint aux identifiants Chrome publiés.
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://plbls.fr}
+      CORS_ALLOW_EXTENSIONS: ${CORS_ALLOW_EXTENSIONS:-true}
+      CORS_EXTENSION_IDS: ${CORS_EXTENSION_IDS:-}
+      BODY_LIMIT_BYTES: ${BODY_LIMIT_BYTES:-5242880}
+      LISTING_MAX_BYTES: ${LISTING_MAX_BYTES:-65536}
+      SETTINGS_MAX_BYTES: ${SETTINGS_MAX_BYTES:-262144}
+      SYNC_PUSH_MAX: ${SYNC_PUSH_MAX:-500}
+      SYNC_PULL_MAX: ${SYNC_PULL_MAX:-500}
+    networks:
+      - web
+      - db-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.radar-immo-api.entrypoints=websecure"
+      - "traefik.http.routers.radar-immo-api.rule=Host(`${RADAR_API_HOST:-radar-api.plbls.fr}`)"
+      - "traefik.http.routers.radar-immo-api.tls=true"
+      - "traefik.http.routers.radar-immo-api.tls.certresolver=cloudflare"
+      - "traefik.http.routers.radar-immo-api.service=radar-immo-api"
+      - "traefik.http.services.radar-immo-api.loadbalancer.server.port=3000"
+      - "traefik.http.services.radar-immo-api.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.radar-immo-api.loadbalancer.healthcheck.interval=30s"
+
+networks:
+  web:
+    external: true
+  db-network:
+    external: true

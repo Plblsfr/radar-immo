@@ -12,6 +12,8 @@ const ok = (msg) => console.log('✓ ' + msg);
 
 const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
 const jsFiles = [...walk(join(root, 'src')), ...walk(join(root, 'scripts')), ...walk(join(root, 'tests'))].filter((f) => /\.(m?js)$/.test(f));
+if (!/const DEFAULT_API_URL = '';/.test(readFileSync(join(root, 'src/lib/cloud.js'), 'utf8')))
+  fail('src/lib/cloud.js : DEFAULT_API_URL doit rester vide dans le dépôt (injecté au build par RADAR_API_URL)');
 for (const f of jsFiles) {
   try { execFileSync(process.execPath, ['--check', f], { stdio: 'pipe' }); } catch (e) { fail(`Syntaxe : ${f}\n${e.stderr}`); }
 }
@@ -25,7 +27,7 @@ const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
 if (!changelog.includes(`## [${pkg.version}]`)) fail(`CHANGELOG.md n'a pas d'entrée pour ${pkg.version}`);
 else ok(`Version ${pkg.version} cohérente (package, manifest, CHANGELOG)`);
 
-for (const f of ['icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png', 'popup/popup.html', 'dashboard/dashboard.html']) {
+for (const f of ['icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png', 'popup/popup.html', 'dashboard/dashboard.html', 'lib/cloud.js', 'auth/callback.html']) {
   try { statSync(join(root, 'src', f)); } catch { fail(`Fichier manquant : src/${f}`); }
 }
 process.exit(failed ? 1 : 0);

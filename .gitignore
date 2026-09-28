@@ -20,3 +20,4 @@ Thumbs.db
 # Clés API (web-ext sign, etc.)
 .env
 .env.*
+!.env.example

@@ -75,3 +75,4 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0}
 
 .dpe{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;font:650 11.5px/1 var(--font);color:#18181b}
 .dpe-A{background:#009c6d;color:#fff}.dpe-B{background:#52b153;color:#fff}.dpe-C{background:#a5cc74}.dpe-D{background:#f4e70f}.dpe-E{background:#f0b50f}.dpe-F{background:#eb8235}.dpe-G{background:#d7221f;color:#fff}.dpe-x{background:var(--subtle);color:var(--muted)}
+[hidden]{display:none !important}

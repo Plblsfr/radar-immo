@@ -25,6 +25,7 @@ Note chaque annonce selon tes critères, suit les baisses de prix et repère le 
 - [Installation](#installation)
 - [Premiers pas](#premiers-pas)
 - [Comment le score est calculé](#comment-le-score-est-calculé)
+- [Compte et synchronisation](#compte-et-synchronisation)
 - [Confidentialité](#confidentialité)
 - [Développement](#développement)
 - [Limites connues](#limites-connues)
@@ -55,6 +56,7 @@ Note chaque annonce selon tes critères, suit les baisses de prix et repère le 
 - **Recherches enregistrées** : ta tournée quotidienne s'ouvre en un clic.
 - **Critères** : budget, pièces, surface, DPE, charges, financement, quartiers bannis ou préférés, mots-clés.
 - **Export et import** en JSON et CSV.
+- **Compte (facultatif)** : tes critères et tes annonces synchronisés entre tes navigateurs et l'application web.
 
 <table>
   <tr>
@@ -139,9 +141,21 @@ Seuils : **Coup de cœur** à partir de 80, **Intéressant** à partir de 62, **
 
 Les DPE **E, F et G** sont signalés avec leur date d'interdiction à la location fixée par la loi Climat et Résilience (G : 2025, F : 2028, E : 2034).
 
+## Compte et synchronisation
+
+La connexion est **facultative**. Sans compte, l'extension fonctionne entièrement en local, comme avant.
+
+Une fois connecté (*Tableau de bord → Données → Se connecter*), tes critères et tes annonces sont synchronisés avec l'[API Radar Immo](server/README.md) : tu les retrouves sur tes autres navigateurs et dans l'application web. La synchronisation a lieu quelques secondes après chaque modification, toutes les 15 minutes, et à la demande (*Synchroniser maintenant*). En cas de modification des deux côtés, la plus récente gagne.
+
+- **Connexion** : l'extension ouvre la page de connexion de l'application web, qui lui renvoie un jeton après ton accord. Tu peux aussi coller un jeton dans *Réglages avancés*.
+- **Hors ligne** : tout continue de fonctionner. Les modifications partent à la synchronisation suivante.
+- **Session expirée** : tes données locales sont conservées, il suffit de te reconnecter.
+
+Les adresses de l'API et de la page de connexion sont intégrées au build (`RADAR_API_URL`, `RADAR_LOGIN_URL`, voir [Développement](#développement)) ou saisies dans *Réglages avancés*.
+
 ## Confidentialité
 
-Radar Immo **ne collecte rien et n'envoie rien** : pas de serveur, pas de statistiques, pas de traceur. Tes critères et tes annonces restent dans le stockage local de ton navigateur. La seule chose chargée depuis l'extérieur, ce sont les photos des annonces sauvegardées, qui viennent de leur site d'origine. Voir [PRIVACY.md](PRIVACY.md).
+**Sans compte**, Radar Immo **ne collecte rien et n'envoie rien** : pas de serveur, pas de statistiques, pas de traceur. Tes critères et tes annonces restent dans le stockage local de ton navigateur. **Avec un compte**, ils sont aussi envoyés à l'API Radar Immo pour être synchronisés, et rien d'autre. Dans les deux cas, la seule chose chargée depuis l'extérieur, ce sont les photos des annonces sauvegardées, qui viennent de leur site d'origine. Voir [PRIVACY.md](PRIVACY.md).
 
 ## Développement
 
@@ -151,6 +165,9 @@ Radar Immo **ne collecte rien et n'envoie rien** : pas de serveur, pas de statis
 npm run check        # syntaxe JS, manifest, cohérence des versions
 npm test             # tests unitaires (runner intégré de Node)
 npm run build        # génère dist/radar-immo-<version>-{chrome,firefox}.zip
+
+# Build relié au service (adresses intégrées au paquet)
+RADAR_API_URL=https://api.exemple.fr RADAR_LOGIN_URL=https://app.exemple.fr/connexion-extension npm run build
 
 npm install          # uniquement pour les tests de bout en bout (Playwright)
 npx playwright install chromium
@@ -164,26 +181,32 @@ npm run screenshots  # idem + régénère docs/screenshots/
 radar-immo/
 ├── src/                      # l'extension, telle que publiée
 │   ├── manifest.json         # MV3, compatible Chrome et Firefox
-│   ├── background.js         # service worker (Chrome) / page d'événements (Firefox)
+│   ├── background.js         # service worker (Chrome) / page d'événements (Firefox), synchro périodique
 │   ├── lib/radar.js          # logique partagée : extraction, score, financement, stockage
+│   ├── lib/cloud.js          # compte et synchronisation avec l'API (facultatif)
 │   ├── content/content.js    # script de page : panneau, pastilles, surlignage
 │   ├── popup/                # popup de la barre d'outils
-│   ├── dashboard/            # tableau de bord (annonces, comparateur, critères…)
+│   ├── dashboard/            # tableau de bord (annonces, comparateur, critères, compte…)
+│   ├── auth/callback.html    # retour de la page de connexion de l'application web
 │   └── icons/
+├── server/                   # API Radar Immo (Node.js, Fastify, PostgreSQL) — voir server/README.md
 ├── tests/
-│   ├── unit/                 # tests de lib/radar.js
+│   ├── unit/                 # tests de lib/radar.js et lib/cloud.js
 │   └── e2e/                  # Playwright + pages d'annonces simulées
 ├── scripts/
 │   ├── build.mjs             # empaquetage zip reproductible, sans dépendance
 │   └── check.mjs             # vérifications avant build
-├── docs/screenshots/
+├── docs/
+│   ├── CDC-front-end.md      # cahier des charges de l'application web
+│   └── screenshots/
 └── .github/                  # CI, modèles d'issues et de PR
 ```
 
 ### Architecture en bref
 - **`lib/radar.js`** est chargé partout (page, popup, tableau de bord, arrière-plan, tests Node) et expose `globalThis.RadarImmo`. Toute la logique métier y vit.
 - **Extraction** : les sources structurées passent en priorité (données `__NEXT_DATA__` de Leboncoin, JSON-LD schema.org), puis le texte de la page complète les manques. Les corrections de l'utilisateur écrasent toujours le reste.
-- **Stockage** : `storage.local`, avec deux clés, `settings` et `listings`.
+- **Stockage** : `storage.local`, avec les clés `settings` et `listings`. Chaque modification est datée (`updatedAt`, `settingsUpdatedAt`) et chaque suppression laisse une « tombe » (`deleted`), ce qui permet la synchronisation. La connexion au compte est dans la clé `cloud`, jamais exportée.
+- **Synchronisation** (`lib/cloud.js`, lancée par `background.js`) : envoie les changements locaux à `POST /v1/sync` et applique ceux reçus, la dernière écriture gagnant. Détails dans [server/README.md](server/README.md#synchronisation).
 - **Compatibilité** : l'API est choisie à l'exécution (`browser` sous Firefox, `chrome` sinon). Les fonctions absentes sur Android (menus contextuels, badge) sont ignorées sans erreur.
 
 Pour ajouter un site ou améliorer une détection, voir [CONTRIBUTING.md](CONTRIBUTING.md#ajouter-ou-corriger-un-site).
@@ -193,7 +216,7 @@ Pour ajouter un site ou améliorer une détection, voir [CONTRIBUTING.md](CONTRI
 - L'extraction lit le HTML des sites. **Si un site change sa mise en page, un champ peut être mal lu** : corrige-le dans le panneau et [ouvre une issue](../../issues/new/choose).
 - Les quartiers sont reconnus **par mots-clés** : ajoute des noms de rues pour plus de précision.
 - Le financement est une **estimation indicative** : le taux, l'assurance et les frais réels dépendent de ta banque et du notaire.
-- Les données ne sont **pas synchronisées** entre appareils. Utilise *Données → Exporter / Importer*.
+- **Sans compte**, les données ne sont pas synchronisées entre appareils : utilise *Données → Exporter / Importer*.
 - Ce n'est pas un conseil financier ni immobilier.
 
 ## Contribuer

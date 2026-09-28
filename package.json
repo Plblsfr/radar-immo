@@ -10,7 +10,7 @@
   },
   "scripts": {
     "check": "node scripts/check.mjs",
-    "test": "node --test tests/unit/radar.test.cjs",
+    "test": "node --test tests/unit/*.test.cjs",
     "test:e2e": "node tests/e2e/extension.e2e.mjs",
     "screenshots": "node tests/e2e/extension.e2e.mjs --screenshots",
     "build": "node scripts/check.mjs && node scripts/build.mjs"

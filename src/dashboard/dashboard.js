@@ -1,4 +1,5 @@
 const R = globalThis.RadarImmo;
+const C = globalThis.RadarCloud;
 const ext = (globalThis.browser && globalThis.browser.runtime) ? globalThis.browser : globalThis.chrome;
 const CK = { ok: '✓', warn: '!', bad: '✕', info: 'i' };
 const checksHtml = (checks) => `<ul class="checks">${checks.map((c) => `<li><span class="ck ${c.level}" aria-hidden="true">${CK[c.level]}</span><span><b>${esc(c.label)}</b> — ${esc(c.detail)}</span></li>`).join('')}</ul>`;
@@ -311,7 +312,7 @@ function download(name, text, type) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 $('#expJson').onclick = async () => {
-  const data = await ext.storage.local.get(null);
+  const data = await ext.storage.local.get(['settings', 'listings', 'compare']); // jamais le jeton du compte
   download(`radar-immo-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), 'application/json');
 };
 $('#expCsv').onclick = () => {
@@ -330,7 +331,8 @@ $('#impJson').onchange = async (e) => {
     const data = JSON.parse(await file.text());
     if (!data.settings && !data.listings) throw new Error('format');
     const cur = await R.getListings();
-    await ext.storage.local.set({ settings: data.settings || S, listings: Object.assign(cur, data.listings || {}) });
+    if (data.settings) await R.saveSettings(data.settings);
+    await R.saveListings(Object.assign(cur, data.listings || {}));
     alert('Import terminé.'); location.reload();
   } catch (err) { alert('Fichier invalide.'); }
 };
@@ -341,17 +343,77 @@ $('#purgeSeen').onclick = async () => {
   await R.saveListings(ALL); renderList();
 };
 $('#resetAll').onclick = async () => {
-  if (!confirm('Effacer TOUTES les données (critères et annonces) ?')) return;
-  await ext.storage.local.clear(); location.reload();
+  const cloud = await C.getState();
+  const online = !!cloud.token;
+  if (!confirm(online ? 'Effacer TOUTES les données (critères et annonces), sur ce navigateur ET dans ton compte en ligne ?'
+    : 'Effacer TOUTES les données (critères et annonces) ?')) return;
+  if (online) {
+    try { await C.wipeRemote(); } catch (e) { alert('Impossible d\'effacer les données du compte : ' + e.message); return; }
+  }
+  await ext.storage.local.clear();
+  await ext.storage.local.set({ cloud: Object.assign(cloud, { cursor: 0, lastPushAt: 0 }) }); // reste connecté
+  location.reload();
 };
 
-// Rafraîchit quand une annonce est vue/modifiée dans un autre onglet
+// ───────────────────────────── Compte et synchronisation
+const ago = (t) => {
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 60 ? 'à l\'instant' : s < 3600 ? `il y a ${Math.round(s / 60)} min` : s < 86400 ? `il y a ${Math.round(s / 3600)} h` : 'le ' + fmtDate(t);
+};
+async function renderAccount() {
+  const c = await C.getState();
+  const on = !!c.token;
+  $('#acStatus').textContent = on
+    ? `Connecté (compte ${c.userId}). ${c.lastSyncAt ? 'Dernière synchronisation ' + ago(c.lastSyncAt) + '.' : 'Première synchronisation en cours…'} Tes critères et tes annonces sont aussi disponibles dans l'application web.`
+    : c.status === 'expired' ? 'Ta session a expiré. Reconnecte-toi pour reprendre la synchronisation : tes données locales sont conservées.'
+      : 'Non connecté. Tes données restent dans ce navigateur. Connecte-toi pour les retrouver sur tous tes appareils et dans l\'application web.';
+  $('#acError').hidden = !(on && c.status === 'error' && c.lastError);
+  $('#acError').textContent = c.lastError ? 'Dernière synchronisation échouée : ' + c.lastError + '. Nouvel essai automatique dans quelques minutes.' : '';
+  $('#acLogin').hidden = on;
+  $('#acLogin').textContent = c.status === 'expired' ? 'Se reconnecter' : 'Se connecter';
+  $('#acSync').hidden = !on; $('#acLogout').hidden = !on;
+  if (document.activeElement !== $('#acApi')) $('#acApi').value = c.apiUrl || '';
+  if (document.activeElement !== $('#acLoginUrl')) $('#acLoginUrl').value = c.loginUrl || '';
+  $('#acApi').placeholder = C.DEFAULT_API_URL || 'https://api.exemple.fr';
+  $('#acLoginUrl').placeholder = C.DEFAULT_LOGIN_URL || 'https://app.exemple.fr/connexion-extension';
+}
+const requestSync = async () => {
+  const r = await ext.runtime.sendMessage({ type: 'cloudSync' });
+  if (r && !r.ok) throw new Error(r.error);
+};
+$('#acApi').onchange = async (e) => { await C.setState({ apiUrl: e.target.value.trim() }); renderAccount(); };
+$('#acLoginUrl').onchange = async (e) => { await C.setState({ loginUrl: e.target.value.trim() }); renderAccount(); };
+$('#acLogin').onclick = async () => {
+  try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) { alert(e.message + ' — renseigne-la dans « Réglages avancés ».'); }
+};
+$('#acTokenForm').onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await C.connectWithToken($('#acToken').value);
+    $('#acToken').value = '';
+    renderAccount(); await requestSync();
+  } catch (err) { alert('Connexion impossible : ' + err.message); }
+};
+$('#acSync').onclick = async () => {
+  $('#acSync').disabled = true;
+  try { await requestSync(); } catch (e) { /* affiché via l'état */ }
+  $('#acSync').disabled = false; renderAccount();
+};
+$('#acLogout').onclick = async () => {
+  if (!confirm('Se déconnecter ? Tes données restent sur ce navigateur, mais ne seront plus synchronisées.')) return;
+  await C.disconnect(); renderAccount();
+};
+
+// Rafraîchit quand une annonce est vue/modifiée dans un autre onglet, ou reçue par la synchro
 ext.storage.onChanged.addListener(async (ch) => {
   if (ch.listings) { ALL = ch.listings.newValue || {}; if (!dlg.open) renderList(); }
+  if (ch.settings && !form.contains(document.activeElement)) { S = await R.getSettings(); fillForm(); renderList(); }
+  if (ch.cloud) renderAccount();
 });
 
 (async () => {
   await load();
+  renderAccount();
   fillForm();
   renderList();
   route();

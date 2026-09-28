@@ -142,10 +142,31 @@
 
   <!-- DONNEES -->
   <section id="tab-donnees" class="tab">
+    <div class="panel" id="account" style="margin-bottom:var(--espace-6)">
+      <h2 class="section-title">Compte et synchronisation</h2>
+      <p class="lead" id="acStatus">Non connecté. Tes données restent dans ce navigateur.</p>
+      <p class="callout" id="acError" hidden></p>
+      <div class="row" id="acActions">
+        <button class="btn primary" id="acLogin">Se connecter</button>
+        <button class="btn" id="acSync" hidden>Synchroniser maintenant</button>
+        <button class="btn ghost" id="acLogout" hidden>Se déconnecter</button>
+      </div>
+      <details style="margin-top:var(--espace-4)">
+        <summary class="m">Réglages avancés</summary>
+        <div class="fields" style="margin-top:12px">
+          <label>Adresse de l'API<input id="acApi" type="url" placeholder="https://api.exemple.fr"></label>
+          <label>Page de connexion<input id="acLoginUrl" type="url" placeholder="https://app.exemple.fr/connexion-extension"></label>
+        </div>
+        <form id="acTokenForm" class="row" style="margin-top:12px">
+          <input id="acToken" placeholder="Ou colle un jeton d'accès" style="flex:1;min-width:200px" autocomplete="off" aria-label="Jeton d'accès">
+          <button class="btn">Utiliser ce jeton</button>
+        </form>
+      </details>
+    </div>
     <div class="grid2">
       <div class="panel">
         <h2 class="section-title">Sauvegarde et export</h2>
-        <p class="lead">Tout reste dans ton navigateur, rien n'est envoyé ailleurs. Exporte de temps en temps pour ne rien perdre.</p>
+        <p class="lead">Sans compte, tout reste dans ton navigateur. Exporte de temps en temps pour ne rien perdre.</p>
         <div class="row">
           <button class="btn" id="expJson">Exporter (JSON)</button>
           <button class="btn" id="expCsv">Exporter en CSV</button>
@@ -167,6 +188,7 @@
 <dialog id="detail" aria-label="Détail de l'annonce"></dialog>
 
 <script src="../lib/radar.js"></script>
+<script src="../lib/cloud.js"></script>
 <script src="dashboard.js"></script>
 </body>
 </html>

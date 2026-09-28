@@ -6,6 +6,18 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+### Ajouté
+- **API Radar Immo** (`server/`) : backend Node.js (Fastify) qui synchronise les critères et les annonces de chaque utilisateur. Il utilise la base PostgreSQL du backend principal, dans un schéma dédié (`radar_immo`), et délègue l'authentification au backend existant (route GET, jeton transmis en en-tête).
+- **Compte et synchronisation facultatifs** dans l'extension : panneau *Données → Compte et synchronisation*, connexion via l'application web (`auth/callback.html`) ou par jeton, synchronisation en arrière-plan (après modification, toutes les 15 minutes et à la demande), où la dernière écriture gagne.
+- Build : `RADAR_API_URL` et `RADAR_LOGIN_URL` intègrent les adresses du service au paquet.
+- Déploiement de l'API : `server/docker-compose.yml` (labels Traefik, réseaux `web` et `db-network`) et workflow manuel *Image API*, qui pousse l'image sur ghcr.io.
+- Cahier des charges de l'application web : `docs/CDC-front-end.md`.
+
+### Modifié
+- Les annonces et les critères sont datés à chaque modification, et les suppressions sont mémorisées, pour permettre la synchronisation.
+- L'export JSON n'inclut plus que les critères, les annonces et la sélection du comparateur, jamais le jeton du compte.
+- Nouvelle permission `alarms`, pour la synchronisation périodique.
+
 ## [1.1.0] - 2026-09-27
 
 ### Ajouté
