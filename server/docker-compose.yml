@@ -33,6 +33,8 @@ services:
       # Origines du front-end ; les extensions (chrome-extension://, moz-extension://) sont
       # autorisées en plus. CORS_EXTENSION_IDS restreint aux identifiants Chrome publiés.
       CORS_ORIGINS: ${CORS_ORIGINS:-https://plbls.fr}
+      # Préfixe des liens de partage public. Vide : https://<RADAR_API_HOST>/s/<jeton>, page servie par l'API.
+      SHARE_URL_PREFIX: ${SHARE_URL_PREFIX:-}
       CORS_ALLOW_EXTENSIONS: ${CORS_ALLOW_EXTENSIONS:-true}
       CORS_EXTENSION_IDS: ${CORS_EXTENSION_IDS:-}
       BODY_LIMIT_BYTES: ${BODY_LIMIT_BYTES:-5242880}

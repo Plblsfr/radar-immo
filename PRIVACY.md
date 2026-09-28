@@ -12,6 +12,7 @@ Radar Immo est conçu pour fonctionner **entièrement sur ton appareil**. La con
 - Tes **critères** et **les annonces enregistrées dans l'extension** (voir ci-dessous) sont envoyés à l'API Radar Immo, pour être synchronisés entre tes navigateurs et l'application web. Rien d'autre n'est envoyé : ni ton historique de navigation, ni le contenu des autres sites.
 - L'extension garde un **jeton d'accès** dans son stockage local. Il n'est jamais inclus dans les exports.
 - Le serveur n'associe tes données qu'à l'identifiant de ton compte. Le jeton est transmis au service d'authentification pour être vérifié, mais il n'est ni stocké ni journalisé.
+- **Partage** : quand tu crées un lien de partage, l'annonce (prix, caractéristiques, photo, score, et tes notes seulement si tu le demandes) devient visible par **toute personne qui a le lien**. Les pages partagées ne sont pas indexées par les moteurs de recherche. Tu peux désactiver un lien à tout moment. Il est aussi désactivé si tu supprimes l'annonce ou si tu effaces tes données.
 - *Se déconnecter* arrête la synchronisation et conserve tes données locales. *Tout effacer* supprime aussi tes données du serveur.
 
 ## Ce qui est stocké, et où

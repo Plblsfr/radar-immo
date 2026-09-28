@@ -6,6 +6,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+### Ajouté
+- **Partage public d'une annonce** : dans le détail d'une annonce du tableau de bord, *Partager* crée un lien secret (`/s/<jeton>`) que l'on peut envoyer à un proche sans compte ni extension. La page publique affiche le prix à jour, la baisse de prix, les caractéristiques, le DPE, le score et un message facultatif, avec un aperçu dans les messageries. Les notes sont incluses seulement si on le choisit. Le lien est désactivable et peut expirer (7 jours, 30 jours ou jamais).
+- API : routes `/v1/shares`, `/public/shares/:token` et `/s/:token`, table `shares` (migration `002_shares.sql`), variable `SHARE_URL_PREFIX`.
+
+### Modifié
+- API : la connexion à PostgreSQL échoue au bout de 10 s au lieu d'attendre indéfiniment.
+
 ### Modifié
 - API : journaux détaillés de l'authentification déléguée (configuration au démarrage, statut, durée, redirection et extrait de réponse du backend d'authentification ; jamais le jeton).
 - API : une route de vérification introuvable (404, 405) ou une redirection renvoie désormais `503 auth_unavailable` (mauvaise configuration) au lieu de `401 invalid_token`.

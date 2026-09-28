@@ -109,6 +109,30 @@
     await request(apiUrlOf(s), s.token, '/v1/data', { method: 'DELETE' });
   }
 
+  // ───────────────────────── Partage public d'une annonce
+  async function authed(path, opts) {
+    const s = await getState();
+    if (!s.token) throw new CloudError(401, 'not_connected', 'Connecte-toi à ton compte pour partager');
+    try {
+      return await request(apiUrlOf(s), s.token, path, opts);
+    } catch (e) {
+      if (e.status === 401) await setState({ status: 'expired', token: null, lastError: e.message });
+      throw e;
+    }
+  }
+  /** Crée (ou met à jour) le lien public d'une annonce. Synchronise d'abord, pour que le serveur la connaisse. */
+  async function createShare(listingId, { message, includeNotes, expiresInDays } = {}) {
+    await sync();
+    return authed('/v1/shares', { method: 'POST', body: { listingId, message: message || null, includeNotes: !!includeNotes, expiresInDays: expiresInDays || null } });
+  }
+  async function getShare(listingId) {
+    const r = await authed('/v1/shares?listingId=' + encodeURIComponent(listingId));
+    return (r && r.items && r.items[0]) || null;
+  }
+  async function revokeShare(token) {
+    await authed('/v1/shares/' + encodeURIComponent(token), { method: 'DELETE' });
+  }
+
   // ───────────────────────── Fusion (fonctions pures, testées)
   const stripTs = (rec) => { const o = Object.assign({}, rec); delete o.updatedAt; return o; };
   const tsOf = (rec) => rec.updatedAt || rec.lastSeen || rec.firstSeen || 1;
@@ -218,6 +242,7 @@
   const api = {
     DEFAULT_API_URL, DEFAULT_LOGIN_URL, CloudError,
     getState, setState, startLogin, completeLogin, connectWithToken, disconnect, wipeRemote, sync,
+    createShare, getShare, revokeShare,
     collectChanges, applyRemote, apiUrlOf, loginUrlOf
   };
   root.RadarCloud = api;

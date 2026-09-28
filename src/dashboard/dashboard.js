@@ -167,6 +167,8 @@ function openDetail(id) {
     <h2 class="section-title">Notes</h2><textarea id="dNotes" placeholder="Contact, impressions, questions à poser…">${esc(rec.notes || '')}</textarea>
     <h2 class="section-title">Checklist de visite</h2>
     <div class="checklist">${R.VISIT_CHECKLIST.map((q, i) => `<label><input type="checkbox" data-i="${i}"${rec.checklist && rec.checklist[i] ? ' checked' : ''}> ${esc(q)}</label>`).join('')}</div>
+    <h2 class="section-title">Partager</h2>
+    <div id="dShare" class="share"><p class="m small" style="margin:0">…</p></div>
     <h2 class="section-title">Vérifier</h2>
     <div class="row">${R.toolLinks(l).map((t) => `<a class="btn sm" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join('')}</div>
     <div style="margin-top:var(--espace-8)"><button class="btn danger sm" id="dDel">Supprimer cette annonce</button></div>
@@ -176,12 +178,64 @@ function openDetail(id) {
   $$('.checklist input', dlg).forEach((c) => (c.onchange = async () => {
     const cl = Object.assign({}, ALL[id].checklist || {}); cl[c.dataset.i] = c.checked; await patch(id, { checklist: cl });
   }));
+  renderShare(id);
   $('#dDel').onclick = async () => {
     if (!confirm('Supprimer cette annonce de Radar Immo ?')) return;
     ALL = await R.getListings(); delete ALL[id]; await R.saveListings(ALL);
     compare = compare.filter((x) => x !== id); saveCompare(); dlg.close();
   };
   if (!dlg.open) dlg.showModal();
+}
+
+// ───────────────────────────── Partage public
+const fmtDay = (t) => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+async function renderShare(id) {
+  const box = $('#dShare');
+  if (!box) return;
+  const cloud = await C.getState();
+  if (!cloud.token) {
+    box.innerHTML = `<p class="m small" style="margin:0">Crée un lien public vers cette annonce pour la montrer à un proche, même sans Radar Immo. Il faut d'abord <a href="#donnees">te connecter à ton compte</a>.</p>`;
+    return;
+  }
+  let share = null;
+  try { share = await C.getShare(id); } catch (e) {
+    box.innerHTML = `<p class="m small" style="margin:0">Partage indisponible : ${esc(e.message)}</p>`; return;
+  }
+  if (!$('#dShare') || box !== $('#dShare')) return; // le détail a changé entre-temps
+  if (share) {
+    box.innerHTML = `<div class="row"><input id="shUrl" readonly value="${esc(share.url)}" style="flex:1;min-width:220px" aria-label="Lien de partage">
+        <button class="btn sm primary" id="shCopy">Copier</button>
+        ${navigator.share ? '<button class="btn sm" id="shSend">Envoyer…</button>' : ''}</div>
+      <p class="m small" style="margin:8px 0 0">Lien public : toute personne qui l'a peut voir le prix, les caractéristiques, le score${share.includeNotes ? ', tes notes' : ''}${share.message ? ' et ton message' : ''}.
+        Ouvert ${share.views} fois${share.expiresAt ? ` · expire le ${fmtDay(share.expiresAt)}` : ''}.</p>
+      <div class="row" style="margin-top:8px"><a class="btn sm ghost" href="${esc(share.url)}" target="_blank" rel="noopener">Voir la page</a>
+        <button class="btn sm danger" id="shOff">Désactiver le lien</button></div>`;
+    $('#shCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(share.url); } catch (e) { $('#shUrl').select(); document.execCommand('copy'); }
+      $('#shCopy').textContent = 'Copié ✓'; setTimeout(() => { if ($('#shCopy')) $('#shCopy').textContent = 'Copier'; }, 1500);
+    };
+    if ($('#shSend')) $('#shSend').onclick = () => navigator.share({ title: ALL[id] && ALL[id].title || 'Annonce', url: share.url }).catch(() => {});
+    $('#shOff').onclick = async () => {
+      if (!confirm('Désactiver ce lien ? Les personnes qui l\'ont reçu ne pourront plus voir l\'annonce.')) return;
+      try { await C.revokeShare(share.token); } catch (e) { alert(e.message); }
+      renderShare(id);
+    };
+    return;
+  }
+  box.innerHTML = `<p class="m small" style="margin:0 0 8px">Crée un lien public vers cette annonce pour la montrer à un proche, même sans Radar Immo. Il affiche le prix à jour, les caractéristiques et le score, et renvoie vers l'annonce d'origine.</p>
+    <textarea id="shMsg" maxlength="1000" placeholder="Un mot pour accompagner le lien (facultatif)" style="min-height:60px"></textarea>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <label class="chk small"><input type="checkbox" id="shNotes"> Inclure mes notes</label>
+      <select id="shExp" aria-label="Durée de validité"><option value="7">Valable 7 jours</option><option value="30" selected>Valable 30 jours</option><option value="">Sans expiration</option></select>
+      <button class="btn sm primary" id="shCreate">Créer le lien</button>
+    </div>`;
+  $('#shCreate').onclick = async () => {
+    $('#shCreate').disabled = true; $('#shCreate').textContent = 'Création…';
+    try {
+      await C.createShare(id, { message: $('#shMsg').value.trim(), includeNotes: $('#shNotes').checked, expiresInDays: +$('#shExp').value || null });
+    } catch (e) { alert('Impossible de créer le lien : ' + e.message); }
+    renderShare(id);
+  };
 }
 
 // ───────────────────────────── Comparateur

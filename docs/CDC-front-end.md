@@ -255,6 +255,32 @@ C'est par cette page que l'extension obtient le jeton de l'utilisateur. Le déro
 - **Exporter** : `GET /v1/export` renvoie `{ "settings": {…} | null, "settingsUpdatedAt": …, "listings": { "<id>": {…} } }`. Proposer le téléchargement du fichier `radar-immo-AAAA-MM-JJ.json`. Ce format est compatible avec l'import de l'extension.
 - **Tout effacer** : `DELETE /v1/data` renvoie `204`. Double confirmation : « Effacer toutes tes données Radar Immo (critères et annonces) ? Elles seront aussi effacées de l'extension sur tous tes navigateurs. Cette action est définitive. »
 
+### 6.6 Partage public d'une annonce
+
+L'utilisateur peut créer un **lien public** vers une annonce, à envoyer à un proche qui n'a ni compte ni extension. L'API sert déjà la page publique (`https://<API>/s/<jeton>`). Le front-end n'a donc **rien d'obligatoire à afficher côté public** : il gère seulement les liens de l'utilisateur.
+
+**Dans le détail d'une annonce (6.2)**, ajouter une section « Partager » :
+
+| Action | Appel |
+|---|---|
+| Savoir si un lien existe | `GET /v1/shares?listingId={id}` → `{ items: [ { token, url, message, includeNotes, createdAt, expiresAt, views } ] }` (vide s'il n'y en a pas) |
+| Créer le lien, ou modifier ses options | `POST /v1/shares` `{ "listingId": "…", "message": "…", "includeNotes": false, "expiresInDays": 30 }` → `201` avec `url` |
+| Désactiver le lien | `DELETE /v1/shares/{token}` → `204` |
+
+- **Formulaire de création** : un message facultatif (1 000 caractères au plus), la case « Inclure mes notes » (décochée par défaut), et la durée (7 jours, 30 jours par défaut, ou « sans expiration » avec `null`).
+- **Lien existant** : afficher l'URL avec les boutons « Copier » et « Envoyer… » (`navigator.share` si disponible, sur mobile), le nombre de consultations (`views`), la date d'expiration, ainsi que « Voir la page » et « Désactiver le lien » (avec confirmation).
+- **Rappel visible** : « Toute personne qui a le lien peut voir le prix, les caractéristiques, le score (et tes notes si tu les as incluses). »
+- **Un seul lien actif par annonce** : un nouveau `POST` renvoie le même jeton avec les nouvelles options. Après une désactivation, un `POST` crée un nouveau jeton.
+- `404` au `POST` : l'annonce n'est pas encore synchronisée par l'extension.
+
+**Page « Mes liens partagés » (facultative)** : `GET /v1/shares` sans paramètre liste tous les liens actifs, avec titre de l'annonce (croisé avec `/v1/listings`), consultations, expiration et bouton « Désactiver ».
+
+**Page publique servie par le front-end (facultative)** : pour que les liens pointent vers l'application (par exemple `https://plbls.fr/partage/<jeton>`), créer une page **publique**, sans connexion, qui appelle `GET /public/shares/{jeton}`. Cette route est publique, sans en-tête `Authorization`, et ouverte en CORS. L'équipe backend règle alors `SHARE_URL_PREFIX=https://plbls.fr/partage/`. Cette page doit :
+- afficher les champs reçus (mêmes champs que le modèle de la section 7, plus `message`, `notes` si incluses, `sharedAt` et `expiresAt`) ;
+- sur `404`, afficher « Ce lien n'est plus disponible » ;
+- porter `<meta name="robots" content="noindex">`, et idéalement les balises Open Graph, qui demandent un rendu côté serveur ;
+- appliquer les règles de sécurité de la section 8 : échapper tous les textes, n'accepter que les liens `http(s)`.
+
 ## 7. Modèle d'une annonce
 
 Tous les champs sont **facultatifs**, sauf `id` et `updatedAt`. Les montants sont en euros et les dates en millisecondes depuis 1970 (`new Date(ms)`).
@@ -319,6 +345,7 @@ Tous les champs sont **facultatifs**, sauf `id` et `updatedAt`. Les montants son
 - [ ] Parcours complet validé : extension non connectée → *Se connecter* → connexion sur le front → *Autoriser* → l'extension affiche « Connecté ».
 - [ ] Export JSON téléchargeable, suppression complète avec double confirmation.
 - [ ] Aucun contenu d'annonce n'est injecté en HTML brut.
+- [ ] Partage : créer, copier, désactiver un lien depuis le détail d'une annonce. Le lien désactivé affiche « Ce lien n'est plus disponible ».
 - [ ] Pages utilisables sur mobile (360 px de large).
 
 ## 10. Points à valider avant de démarrer
