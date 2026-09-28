@@ -70,9 +70,12 @@ GET {AUTH_VERIFY_URL}
 |---|---|
 | **2xx** | La requête continue. |
 | **403** | `403 forbidden` |
-| **Autre 4xx** (401, 404…) | `401 invalid_token` |
+| **Autre 4xx** (401, 422…) | `401 invalid_token` |
+| **404, 405 ou redirection 3xx** (mauvaise `AUTH_VERIFY_URL`) | `503 auth_unavailable` |
 | **5xx**, délai dépassé (`AUTH_TIMEOUT_MS`), réseau | `503 auth_unavailable` |
 | 2xx sans identifiant exploitable | `502 auth_no_user_id` (erreur de configuration) |
+
+**Journaux.** Au démarrage, l'API journalise sa configuration d'authentification (URL, en-tête, préfixe, chemins de l'identifiant). Chaque appel au backend d'authentification est journalisé avec son statut, sa durée, l'en-tête `Location` en cas de redirection et les 300 premiers caractères du corps en cas d'échec. Le jeton n'apparaît jamais : seulement sa longueur, s'il ressemble à un JWT et une empreinte SHA-256 tronquée. Pour diagnostiquer un refus : `docker logs <conteneur> | grep "authentification"`. `LOG_LEVEL=debug` affiche aussi les réponses servies depuis le cache.
 
 **Identifiant de l'utilisateur.** L'API a besoin d'un identifiant stable pour ranger les données. Elle le cherche, dans l'ordre, dans le corps JSON de la réponse 2xx aux chemins de `AUTH_USER_ID_PATHS` (par défaut `id`, `userId`, `user_id`, `sub`, `user.id`, `data.id`), puis dans le claim `sub` du jeton s'il s'agit d'un JWT. **La route de vérification doit donc renvoyer l'identifiant**, ou le jeton doit être un JWT avec `sub`. Adapte `AUTH_USER_ID_PATHS` au format réel.
 

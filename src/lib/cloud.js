@@ -77,7 +77,7 @@
 
   /** Vérifie le jeton auprès de l'API puis l'enregistre. */
   async function connectWithToken(token, overrides = {}) {
-    token = String(token || '').trim();
+    token = String(token || '').trim().replace(/^Bearer\s+/i, ''); // copié depuis l'en-tête Authorization
     if (!token) throw new CloudError(0, 'missing_token', 'Jeton manquant');
     const s = await getState();
     const apiUrl = trimSlash(overrides.apiUrl) || apiUrlOf(s);

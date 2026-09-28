@@ -60,8 +60,14 @@ export function buildApp({ config, store, authClient, db, logger = true }) {
     api.decorateRequest('userId', null);
     api.addHook('onRequest', async (req) => {
       if (req.method === 'OPTIONS') return;
-      const token = bearerToken(req.headers.authorization);
-      if (!token) throw new AuthError(401, 'missing_token', 'En-tête Authorization: Bearer <jeton> manquant');
+      const header = req.headers.authorization;
+      const token = bearerToken(header);
+      if (!token) {
+        // Jamais la valeur de l'en-tête : seulement sa forme, pour diagnostiquer (« Bearer Bearer … », jeton vide…).
+        req.log.warn({ origin: req.headers.origin, authorization: header ? { length: header.length, scheme: String(header).split(/\s+/)[0], parts: String(header).trim().split(/\s+/).length } : 'absent' },
+          'requête sans jeton Bearer valide');
+        throw new AuthError(401, 'missing_token', 'En-tête Authorization: Bearer <jeton> manquant');
+      }
       const { userId } = await authClient.verify(token, req.log);
       req.userId = userId;
       await store.ensureUser(userId);
