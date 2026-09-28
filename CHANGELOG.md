@@ -6,6 +6,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+## [1.2.0] - 2026-09-28
+
 ### Ajouté
 - **API Radar Immo** (`server/`) : backend Node.js (Fastify) qui synchronise les critères et les annonces de chaque utilisateur. Il utilise la base PostgreSQL du backend principal, dans un schéma dédié (`radar_immo`), et délègue l'authentification au backend existant (route GET, jeton transmis en en-tête).
 - **Compte et synchronisation facultatifs** dans l'extension : panneau *Données → Compte et synchronisation*, connexion via l'application web (`auth/callback.html`) ou par jeton, synchronisation en arrière-plan (après modification, toutes les 15 minutes et à la demande), où la dernière écriture gagne.
@@ -47,6 +49,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 - Prise en charge de 19 sites d'annonces.
 - Interface épurée avec thème clair et sombre automatique.
 
-[Non publié]: ../../compare/v1.1.0...HEAD
+[Non publié]: ../../compare/v1.2.0...HEAD
+[1.2.0]: ../../compare/v1.1.0...v1.2.0
 [1.1.0]: ../../compare/v1.0.0...v1.1.0
 [1.0.0]: ../../releases/tag/v1.0.0

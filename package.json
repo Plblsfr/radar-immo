@@ -1,6 +1,6 @@
 {
   "name": "radar-immo",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Extension de navigateur qui note les annonces immobilières selon tes critères, suit les prix et repère les doublons entre sites.",
   "license": "MIT",
