@@ -39,6 +39,10 @@ export function loadConfig(env = process.env) {
       userIdFromJwt: bool(env.AUTH_USER_ID_FROM_JWT, true)
     },
 
+    // Préfixe des liens de partage (le jeton est ajouté à la fin). Vide : https://<hôte de l'API>/s/
+    // Ex. https://plbls.fr/partage/ si le front-end affiche lui-même la page publique.
+    shareUrlPrefix: env.SHARE_URL_PREFIX || '',
+
     cors: {
       origins: list(env.CORS_ORIGINS),
       allowExtensions: bool(env.CORS_ALLOW_EXTENSIONS, true),

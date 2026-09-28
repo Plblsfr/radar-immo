@@ -2,6 +2,8 @@
  * Chaque écriture d'un utilisateur est sérialisée par un verrou consultatif, ce qui garantit
  * que les numéros de version sont validés dans l'ordre et que le curseur de synchro ne saute rien. */
 
+import { newShareToken } from './share.js';
+
 export function createStore(db) {
   const { t, tx, pool } = db;
   const seq = `nextval(${pgLiteral(`${quoteForRegclass(db.schema)}.change_seq`)})`;
@@ -123,6 +125,7 @@ export function createStore(db) {
         [userId, now]
       );
       await c.query(`DELETE FROM ${t('settings')} WHERE user_id = $1`, [userId]);
+      await c.query(`UPDATE ${t('shares')} SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
     });
   }
 
@@ -177,7 +180,70 @@ export function createStore(db) {
     });
   }
 
-  return { ensureUser, getSettings, putSettings, listListings, getListing, patchListing, deleteListing, wipe, exportAll, sync };
+  // ───────────── Partage public
+  const toShare = (r) => ({
+    token: r.token, listingId: r.listing_id, message: r.message, includeNotes: r.include_notes,
+    createdAt: r.created_at.getTime(), expiresAt: r.expires_at ? r.expires_at.getTime() : null,
+    views: r.views, lastViewedAt: r.last_viewed_at ? r.last_viewed_at.getTime() : null
+  });
+
+  /** Crée le lien de partage d'une annonce, ou met à jour ses options s'il existe déjà. null si l'annonce est inconnue. */
+  async function createShare(userId, listingId, { message = null, includeNotes = false, expiresAt = null }) {
+    return tx(async (c) => {
+      await lockUser(c, userId);
+      const { rowCount } = await c.query(`SELECT 1 FROM ${t('listings')} WHERE user_id = $1 AND id = $2 AND NOT deleted`, [userId, listingId]);
+      if (!rowCount) return null;
+      // Un lien expiré ne compte plus comme actif : on le clôt pour pouvoir en créer un neuf.
+      await c.query(
+        `UPDATE ${t('shares')} SET revoked_at = now() WHERE user_id = $1 AND listing_id = $2 AND revoked_at IS NULL AND expires_at <= now()`,
+        [userId, listingId]
+      );
+      const exp = expiresAt ? new Date(expiresAt) : null;
+      const upd = await c.query(
+        `UPDATE ${t('shares')} SET message = $3, include_notes = $4, expires_at = $5
+         WHERE user_id = $1 AND listing_id = $2 AND revoked_at IS NULL RETURNING *`,
+        [userId, listingId, message, includeNotes, exp]
+      );
+      if (upd.rows[0]) return toShare(upd.rows[0]);
+      const { rows } = await c.query(
+        `INSERT INTO ${t('shares')} (token, user_id, listing_id, message, include_notes, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [newShareToken(), userId, listingId, message, includeNotes, exp]
+      );
+      return toShare(rows[0]);
+    });
+  }
+
+  async function listShares(userId, listingId) {
+    const args = [userId];
+    let cond = 'user_id = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())';
+    if (listingId) { args.push(listingId); cond += ' AND listing_id = $2'; }
+    const { rows } = await pool.query(`SELECT * FROM ${t('shares')} WHERE ${cond} ORDER BY created_at DESC`, args);
+    return rows.map(toShare);
+  }
+
+  async function revokeShare(userId, token) {
+    const { rowCount } = await pool.query(
+      `UPDATE ${t('shares')} SET revoked_at = now() WHERE user_id = $1 AND token = $2 AND revoked_at IS NULL`, [userId, token]
+    );
+    return rowCount > 0;
+  }
+
+  /** Lien public : annonce courante + options, et compte la consultation. null si inconnu, expiré, désactivé ou annonce supprimée. */
+  async function viewShare(token) {
+    const { rows } = await pool.query(
+      `WITH s AS (
+         UPDATE ${t('shares')} SET views = views + 1, last_viewed_at = now()
+         WHERE token = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+           AND EXISTS (SELECT 1 FROM ${t('listings')} l WHERE l.user_id = ${t('shares')}.user_id AND l.id = ${t('shares')}.listing_id AND NOT l.deleted)
+         RETURNING *)
+       SELECT s.*, l.data FROM s JOIN ${t('listings')} l ON l.user_id = s.user_id AND l.id = s.listing_id`,
+      [token]
+    );
+    return rows[0] ? { share: toShare(rows[0]), data: rows[0].data } : null;
+  }
+
+  return { ensureUser, getSettings, putSettings, listListings, getListing, patchListing, deleteListing, wipe, exportAll, sync,
+    createShare, listShares, revokeShare, viewShare };
 }
 
 // nextval() attend un nom de séquence sous forme de texte : on le construit à partir du schéma déjà validé.

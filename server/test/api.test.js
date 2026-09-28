@@ -50,7 +50,7 @@ describe('API', { skip }, () => {
 
   test('les tables sont dans le schéma dédié', async () => {
     const { rows } = await db.pool.query('SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY 1', [schema]);
-    assert.deepEqual(rows.map((r) => r.table_name), ['listings', 'schema_migrations', 'settings', 'users']);
+    assert.deepEqual(rows.map((r) => r.table_name), ['listings', 'schema_migrations', 'settings', 'shares', 'users']);
   });
 
   test('santé', async () => {
@@ -179,6 +179,79 @@ describe('API', { skip }, () => {
     assert.equal(r.settings, null); assert.deepEqual(r.listings, {});
     const s = (await app.inject({ method: 'POST', url: '/v1/sync', headers: h, payload: { since: 0 } })).json();
     assert.deepEqual(s.listings.map((l) => l.deleted), [true], 'la suppression se propage aux autres appareils');
+  });
+
+  test('partage public : création, page, JSON, options, révocation', async () => {
+    const h = H('henri');
+    await app.inject({ method: 'POST', url: '/v1/sync', headers: h, payload: { listings: [
+      { id: 'pap:77', updatedAt: 10, data: { title: 'T3 lumineux <script>', price: 180000, priceM2: 2903, surface: 62, rooms: 3, dpe: 'C',
+        url: 'https://www.pap.fr/annonces/77', image: 'https://img.pap.fr/77.jpg', siteName: 'PAP', city: 'Rennes', zones: ['Thabor'],
+        score: 84, verdict: 'Coup de cœur', notes: 'Voisin bruyant', checklist: { 0: true }, overrides: { price: 1 },
+        priceHistory: [{ price: 190000, date: 1 }, { price: 180000, date: 2 }], saved: true } }
+    ] } });
+    let r = await app.inject({ method: 'POST', url: '/v1/shares', headers: h, payload: { listingId: 'inconnue' } });
+    assert.equal(r.statusCode, 404);
+    r = await app.inject({ method: 'POST', url: '/v1/shares', headers: { ...h, host: 'radar-api.test' }, payload: { listingId: 'pap:77', message: 'On visite samedi ?' } });
+    assert.equal(r.statusCode, 201, r.body);
+    const sh = r.json();
+    assert.match(sh.token, /^[A-Za-z0-9_-]{22}$/);
+    assert.equal(sh.url, 'http://radar-api.test/s/' + sh.token);
+
+    // Données publiques : pas de notes par défaut, ni checklist ni corrections
+    r = await app.inject({ url: '/public/shares/' + sh.token, headers: { origin: 'https://nimporte.ou' } });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.headers['access-control-allow-origin'], '*');
+    assert.equal(r.headers['x-robots-tag'], 'noindex, nofollow');
+    const v = r.json();
+    assert.equal(v.price, 180000); assert.equal(v.message, 'On visite samedi ?');
+    for (const k of ['notes', 'checklist', 'overrides', 'saved', 'id']) assert.equal(v[k], undefined, k + ' ne doit pas être public');
+
+    // Page HTML : échappée, avec aperçu Open Graph
+    r = await app.inject({ url: '/s/' + sh.token });
+    assert.equal(r.statusCode, 200);
+    assert.match(r.headers['content-type'], /text\/html/);
+    assert.match(r.headers['content-security-policy'], /default-src 'none'/);
+    assert.ok(r.body.includes('T3 lumineux &lt;script&gt;') && !r.body.includes('<script>'));
+    assert.ok(r.body.includes('property="og:image" content="https://img.pap.fr/77.jpg"'));
+    assert.ok(r.body.includes('En baisse de 10'));
+    assert.ok(!r.body.includes('Voisin bruyant'));
+
+    // Même annonce : même lien, options mises à jour (notes incluses)
+    r = await app.inject({ method: 'POST', url: '/v1/shares', headers: h, payload: { listingId: 'pap:77', includeNotes: true, expiresInDays: 7 } });
+    assert.equal(r.json().token, sh.token); assert.ok(r.json().expiresAt > Date.now());
+    r = await app.inject({ url: '/public/shares/' + sh.token });
+    assert.equal(r.json().notes, 'Voisin bruyant');
+
+    // Le lien suit l'annonce (nouveau prix) et compte les consultations
+    await app.inject({ method: 'POST', url: '/v1/sync', headers: h, payload: { listings: [{ id: 'pap:77', updatedAt: 20, data: { title: 'T3', price: 175000, saved: true } }] } });
+    assert.equal((await app.inject({ url: '/public/shares/' + sh.token })).json().price, 175000);
+    r = await app.inject({ url: '/v1/shares?listingId=pap:77', headers: h });
+    assert.equal(r.json().items.length, 1); assert.ok(r.json().items[0].views >= 4);
+
+    // Un autre utilisateur ne peut pas le désactiver ; le propriétaire si
+    assert.equal((await app.inject({ method: 'DELETE', url: '/v1/shares/' + sh.token, headers: H('mallory') })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'DELETE', url: '/v1/shares/' + sh.token, headers: h })).statusCode, 204);
+    r = await app.inject({ url: '/s/' + sh.token });
+    assert.equal(r.statusCode, 404); assert.match(r.body, /plus disponible/);
+    assert.equal((await app.inject({ url: '/public/shares/' + sh.token })).statusCode, 404);
+
+    // Nouveau lien après désactivation : nouveau jeton ; supprimé avec l'annonce
+    const sh2 = (await app.inject({ method: 'POST', url: '/v1/shares', headers: h, payload: { listingId: 'pap:77' } })).json();
+    assert.notEqual(sh2.token, sh.token);
+    await app.inject({ method: 'DELETE', url: '/v1/listings/pap:77', headers: h });
+    assert.equal((await app.inject({ url: '/s/' + sh2.token })).statusCode, 404);
+    assert.equal((await app.inject({ url: '/s/pas-un-jeton' })).statusCode, 404);
+  });
+
+  test('partage : expiration', async () => {
+    const h = H('iris');
+    await app.inject({ method: 'POST', url: '/v1/sync', headers: h, payload: { listings: [{ id: 'lbc:1', updatedAt: 1, data: { price: 1 } }] } });
+    const sh = (await app.inject({ method: 'POST', url: '/v1/shares', headers: h, payload: { listingId: 'lbc:1', expiresInDays: 1 } })).json();
+    await db.pool.query(`UPDATE "${schema}".shares SET expires_at = now() - interval '1 second' WHERE token = $1`, [sh.token]);
+    assert.equal((await app.inject({ url: '/s/' + sh.token })).statusCode, 404);
+    assert.equal((await app.inject({ url: '/v1/shares', headers: h })).json().items.length, 0);
+    const again = (await app.inject({ method: 'POST', url: '/v1/shares', headers: h, payload: { listingId: 'lbc:1' } })).json();
+    assert.notEqual(again.token, sh.token, 'un lien expiré est remplacé par un nouveau');
   });
 
   test('limites de taille', async () => {

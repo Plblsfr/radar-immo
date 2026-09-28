@@ -15,7 +15,8 @@ export function createDb(cfg) {
     connectionString: cfg.databaseUrl,
     max: cfg.dbPoolMax,
     ssl: cfg.dbSsl ? { rejectUnauthorized: false } : undefined,
-    application_name: 'radar-immo-server'
+    application_name: 'radar-immo-server',
+    connectionTimeoutMillis: 10000 // base injoignable : erreur au bout de 10 s plutôt qu'une attente sans fin
   });
   const schema = quoteIdent(cfg.dbSchema);
   /** Nom de table qualifié : t('listings') → "radar_immo"."listings" */

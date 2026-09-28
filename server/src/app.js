@@ -2,6 +2,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { AuthError, bearerToken } from './auth.js';
+import { publicView, renderSharePage, renderNotFound, SHARE_TOKEN_RE } from './share.js';
 
 const STATUSES = ['new', 'contact', 'visit', 'visited', 'offer', 'rejected'];
 const FIVE_MIN = 5 * 60 * 1000;
@@ -27,11 +28,11 @@ export function buildApp({ config, store, authClient, db, logger = true }) {
     ajv: { customOptions: { removeAdditional: false, coerceTypes: 'array', useDefaults: true } }
   });
 
+  const corsBase = { methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'], allowedHeaders: ['Authorization', 'Content-Type'], maxAge: 600 };
   app.register(cors, {
-    origin: (origin, cb) => cb(null, isAllowedOrigin(origin, config.cors)),
-    methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
-    maxAge: 600
+    // Les pages et données de partage sont publiques : lisibles depuis n'importe quelle origine.
+    delegator: (req, cb) => cb(null, Object.assign({}, corsBase,
+      req.url.startsWith('/public/') ? { origin: '*', methods: ['GET'] } : { origin: isAllowedOrigin(req.headers.origin, config.cors) }))
   });
 
   app.setErrorHandler((err, req, reply) => {
@@ -53,6 +54,25 @@ export function buildApp({ config, store, authClient, db, logger = true }) {
     try { await db.pool.query('SELECT 1'); return { status: 'ok', database: 'ok' }; } catch (e) {
       req.log.error(e); return reply.code(503).send({ status: 'error', database: 'unreachable' });
     }
+  });
+
+  // ───────────── Partage public (sans authentification)
+  const shareUrl = (req, token) => (config.shareUrlPrefix || `${req.protocol}://${req.host}/s/`) + token;
+  const noIndex = (reply) => reply.header('X-Robots-Tag', 'noindex, nofollow').header('Referrer-Policy', 'no-referrer').header('Cache-Control', 'no-store');
+
+  app.get('/public/shares/:token', async (req, reply) => {
+    noIndex(reply);
+    const found = SHARE_TOKEN_RE.test(req.params.token) ? await store.viewShare(req.params.token) : null;
+    if (!found) return fail(reply, 404, 'not_found', 'Lien de partage inconnu, expiré ou désactivé');
+    return publicView(found.data, found.share);
+  });
+
+  app.get('/s/:token', async (req, reply) => {
+    noIndex(reply).type('text/html; charset=utf-8')
+      .header('Content-Security-Policy', "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    const found = SHARE_TOKEN_RE.test(req.params.token) ? await store.viewShare(req.params.token) : null;
+    const { status, html } = found ? renderSharePage(publicView(found.data, found.share), { url: shareUrl(req, req.params.token) }) : renderNotFound();
+    return reply.code(status).send(html);
   });
 
   // ───────────── API authentifiée
@@ -182,6 +202,38 @@ export function buildApp({ config, store, authClient, db, logger = true }) {
       }
       const settings = b.settings ? { data: b.settings.data, updatedAt: clampTs(b.settings.updatedAt) } : null;
       return store.sync(req.userId, { settings, listings }, b.since, config.limits.syncPullMax);
+    });
+
+    // Liens de partage
+    const withUrl = (req, sh) => Object.assign(sh, { url: shareUrl(req, sh.token) });
+    api.post('/shares', {
+      schema: {
+        body: {
+          type: 'object', required: ['listingId'], additionalProperties: false,
+          properties: {
+            listingId: { type: 'string', minLength: 1, maxLength: 300 },
+            message: { type: ['string', 'null'], maxLength: 1000 },
+            includeNotes: { type: 'boolean', default: false },
+            expiresInDays: { type: ['integer', 'null'], minimum: 1, maximum: 365 }
+          }
+        }
+      }
+    }, async (req, reply) => {
+      const b = req.body;
+      const share = await store.createShare(req.userId, b.listingId, {
+        message: b.message && b.message.trim() ? b.message.trim() : null,
+        includeNotes: b.includeNotes,
+        expiresAt: b.expiresInDays ? Date.now() + b.expiresInDays * 86400000 : null
+      });
+      if (!share) return fail(reply, 404, 'not_found', 'Annonce introuvable : synchronise-la avant de la partager');
+      return reply.code(201).send(withUrl(req, share));
+    });
+    api.get('/shares', {
+      schema: { querystring: { type: 'object', additionalProperties: false, properties: { listingId: { type: 'string', maxLength: 300 } } } }
+    }, async (req) => ({ items: (await store.listShares(req.userId, req.query.listingId)).map((sh) => withUrl(req, sh)) }));
+    api.delete('/shares/:token', async (req, reply) => {
+      const ok = await store.revokeShare(req.userId, req.params.token);
+      return ok ? reply.code(204).send() : fail(reply, 404, 'not_found', 'Lien introuvable');
     });
 
     // Export et effacement de toutes les données du compte

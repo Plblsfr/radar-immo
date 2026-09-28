@@ -56,6 +56,7 @@ Toutes les requêtes utilisent des noms qualifiés (`"radar_immo"."listings"`), 
 | `users` | Un identifiant par utilisateur, fourni par le backend d'authentification. Pas de donnée personnelle. |
 | `settings` | Les critères de l'utilisateur (objet JSON de l'extension). |
 | `listings` | Une ligne par annonce suivie (JSON), plus les « tombes » des annonces supprimées, qui propagent la suppression aux autres appareils. |
+| `shares` | Liens de partage public : jeton, annonce, message, notes incluses ou non, expiration, désactivation, consultations. |
 
 ## Authentification
 
@@ -97,6 +98,11 @@ Toutes les routes `/v1/*` exigent `Authorization: Bearer <jeton>`. Les erreurs o
 | PATCH | `/v1/listings/:id` | Suivi : `status`, `notes`, `saved`, `checklist`, `overrides` |
 | DELETE | `/v1/listings/:id` | Supprime l'annonce (et sur les autres appareils) |
 | POST | `/v1/sync` | Synchronisation incrémentale de l'extension |
+| POST | `/v1/shares` | Crée le lien public d'une annonce : `{ listingId, message?, includeNotes?, expiresInDays? }` → `201 { token, url, … }`. Si un lien actif existe déjà pour cette annonce, ses options sont mises à jour. |
+| GET | `/v1/shares` | Liens actifs de l'utilisateur (`?listingId=` pour une annonce) |
+| DELETE | `/v1/shares/:token` | Désactive un lien |
+| GET | `/public/shares/:token` | **Public, sans authentification**, CORS ouvert : vue publique de l'annonce en JSON |
+| GET | `/s/:token` | **Public** : page HTML de l'annonce partagée (aperçu Open Graph pour les messageries) |
 | GET | `/v1/export` | Toutes les données de l'utilisateur |
 | DELETE | `/v1/data` | Efface toutes les données de l'utilisateur, partout |
 
@@ -125,6 +131,16 @@ Le détail des formats, pensé pour l'équipe front-end, est dans le [cahier des
 - Le **curseur** est un numéro de version croissant. Les écritures d'un même utilisateur sont sérialisées par un verrou consultatif PostgreSQL, ce qui garantit que le curseur ne saute aucun changement.
 - `hasMore: true` : rappeler avec `since = cursor` jusqu'à `false`.
 - Limites : 500 annonces poussées et 500 renvoyées par appel, 64 Ko par annonce, 256 Ko de critères, 5 Mo par requête (configurables).
+
+### Partage public
+
+Un lien de partage (`/s/<jeton>`) montre une annonce à quelqu'un qui n'a ni compte ni extension.
+- **Jeton secret** de 128 bits, un seul lien actif par annonce, désactivable, avec expiration facultative (1 à 365 jours).
+- **Données à jour** : la page lit l'annonce synchronisée au moment de la consultation (nouveau prix, baisse). Si l'annonce est supprimée, le lien ne fonctionne plus.
+- **Champs publics seulement** : titre, photo, prix, prix au m², historique de prix, caractéristiques, DPE et GES, charges, taxe foncière, ville, quartiers, score et verdict, lien vers l'annonce d'origine. Les **notes** ne sont montrées que si le propriétaire l'a choisi. La checklist, le statut, les corrections et la description ne sont jamais exposés.
+- **Page autonome** : aucun script, CSS en ligne, `Content-Security-Policy` stricte, `noindex` (en-tête et balise), `Referrer-Policy: no-referrer`, balises Open Graph pour l'aperçu dans WhatsApp, Messenger ou Slack.
+- **Nombre de consultations** comptées (les robots d'aperçu des messageries comptent aussi).
+- `SHARE_URL_PREFIX` permet au front-end de servir lui-même la page (par exemple `https://plbls.fr/partage/<jeton>`) à partir de `GET /public/shares/:token`.
 
 ### CORS
 
