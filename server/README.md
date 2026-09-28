@@ -22,7 +22,19 @@ npm run migrate             # facultatif : les migrations passent aussi au déma
 npm start                   # http://localhost:3000/health
 ```
 
-Avec Docker :
+## Déploiement (Portainer + Traefik)
+
+Même principe que le backend principal : l'image est construite par la CI, puis Portainer la pull.
+
+1. **Construire l'image** : dans GitHub, *Actions → Image API → Run workflow*, sur la branche voulue (`develop` ou `main`). L'image est poussée sur `ghcr.io/plblsfr/radar-immo-api:<branche>`, ainsi que sur `<branche>-<sha>` pour pouvoir revenir en arrière.
+2. **Accès au registre** : le paquet ghcr.io est privé par défaut. Dans Portainer, ajoute le registre `ghcr.io` avec un jeton GitHub qui a le droit `read:packages`, ou rends le paquet public dans GitHub (*Packages → radar-immo-api → Package settings*).
+3. **Base** : exécute une fois [`sql/grants.sql`](sql/grants.sql) sur le PostgreSQL partagé.
+4. **Stack Portainer** : depuis le dépôt Git, chemin du compose `server/docker-compose.yml`. Renseigne les variables de [`.env.example`](.env.example) dans l'éditeur de la stack. Seules `DATABASE_URL` et `AUTH_VERIFY_URL` sont obligatoires, et la stack refuse de démarrer sans elles.
+5. **DNS** : fais pointer `RADAR_API_HOST` (par défaut `radar-api.plbls.fr`) vers le serveur Traefik.
+
+[`docker-compose.yml`](docker-compose.yml) branche le conteneur sur les réseaux externes `web` (Traefik) et `db-network` (PostgreSQL). Traefik publie l'API en HTTPS sur l'entrypoint `websecure`, avec le certresolver `cloudflare`, et redirige vers le port 3000 du conteneur. Le routeur et le service Traefik s'appellent `radar-immo-api`, pour ne pas entrer en conflit avec le `backend` existant. Les migrations passent au démarrage du conteneur.
+
+En local, sans Traefik :
 
 ```bash
 docker build -t radar-immo-api server/
@@ -133,5 +145,5 @@ Les tests d'API créent un schéma temporaire, simulent le backend d'authentific
 - **Journaux** : JSON (pino), en-tête `Authorization` masqué.
 - **Sondes** : `/health` (vivant) et `/health/ready` (base joignable).
 - **Arrêt propre** sur `SIGTERM` / `SIGINT`.
-- **Derrière un reverse proxy** : `TRUST_PROXY=true`. Termine TLS au proxy : l'extension et le front-end exigent HTTPS.
+- **Derrière un reverse proxy** : `TRUST_PROXY=true` (déjà fixé dans `docker-compose.yml`). TLS se termine chez Traefik : l'extension et le front-end exigent HTTPS.
 - **Limitation de débit** : non incluse, à faire au niveau du proxy ou de la passerelle si besoin.

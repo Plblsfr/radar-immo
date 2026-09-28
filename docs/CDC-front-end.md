@@ -59,7 +59,7 @@ Ajouter l'URL de l'API, sans `/` final. Préfixer selon le framework (`VITE_`, `
 
 | Variable | Développement | Recette | Production |
 |---|---|---|---|
-| `RADAR_API_URL` | `http://localhost:3000` | *à fournir par l'équipe backend* | *à fournir par l'équipe backend* |
+| `RADAR_API_URL` | `http://localhost:3000` | *à fournir par l'équipe backend* | `https://radar-api.plbls.fr` (à confirmer) |
 
 L'URL existante du backend principal ne change pas.
 

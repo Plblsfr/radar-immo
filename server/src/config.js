@@ -28,7 +28,8 @@ export function loadConfig(env = process.env) {
       // Route GET du backend d'authentification. 2xx = jeton valide, 4xx = refusé, 5xx = indisponible.
       verifyUrl: env.AUTH_VERIFY_URL || '',
       headerName: env.AUTH_HEADER_NAME || 'Authorization',
-      headerPrefix: env.AUTH_HEADER_PREFIX ?? 'Bearer ',
+      // « Bearer » et « Bearer␠» sont équivalents : un espace sépare toujours le préfixe du jeton.
+      headerPrefix: ((p) => (p && !/\s$/.test(p) ? p + ' ' : p))(env.AUTH_HEADER_PREFIX ?? 'Bearer'),
       timeoutMs: int(env.AUTH_TIMEOUT_MS, 3000),
       cacheTtlMs: int(env.AUTH_CACHE_TTL_MS, 30000),
       cacheMax: int(env.AUTH_CACHE_MAX, 10000),
