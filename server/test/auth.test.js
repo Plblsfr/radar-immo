@@ -45,8 +45,8 @@ describe('createAuthClient', () => {
     await assert.rejects(auth.verify('opaque'), (e) => e instanceof AuthError && e.statusCode === 502);
   });
 
-  test('401/404 → 401, 403 → 403', async () => {
-    for (const [status, expected] of [[401, 401], [404, 401], [422, 401], [403, 403]]) {
+  test('401/422 → 401, 403 → 403, route introuvable ou redirection → 503 (mauvaise configuration)', async () => {
+    for (const [status, expected] of [[401, 401], [422, 401], [403, 403], [404, 503], [405, 503], [302, 503]]) {
       const auth = createAuthClient(cfg(), { fetchImpl: async () => jsonRes(status, { error: 'x' }) });
       await assert.rejects(auth.verify('t'), (e) => e.statusCode === expected);
     }
@@ -74,6 +74,17 @@ describe('createAuthClient', () => {
     clock += 1001;
     await auth.verify('t');
     assert.equal(calls, 2);
+  });
+
+  test('journalise l\'échec sans jamais écrire le jeton', async () => {
+    const logs = [];
+    const log = { info: (o, m) => logs.push([o, m]), warn: (o, m) => logs.push([o, m]), error: (o, m) => logs.push([o, m]), debug() {} };
+    const auth = createAuthClient(cfg(), { fetchImpl: async () => new Response('{"error":"expired"}', { status: 401 }) });
+    await assert.rejects(auth.verify('secret-token-123', log));
+    const [o, m] = logs[0];
+    assert.match(m, /jeton refusé \(401\)/);
+    assert.equal(o.status, 401); assert.equal(o.body, '{"error":"expired"}'); assert.equal(o.token.length, 16);
+    assert.ok(!JSON.stringify(logs).includes('secret-token-123'));
   });
 
   test('jeton absent → 401 sans appel', async () => {

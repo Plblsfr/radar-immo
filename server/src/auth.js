@@ -43,9 +43,21 @@ export function createAuthClient(authCfg, { fetchImpl = globalThis.fetch, now = 
     cache.set(key, value);
   }
 
+  // Journalisation : jamais le jeton, seulement une empreinte courte pour recouper les requêtes.
+  const fingerprint = (token) => hash(token).slice(0, 12);
+  const looksLikeJwt = (token) => String(token).split('.').length === 3;
+  async function excerpt(res) {
+    try { return (await res.text()).replace(/\s+/g, ' ').slice(0, 300); } catch { return ''; }
+  }
+
   async function callAuthBackend(token, log) {
+    const ctx = {
+      authUrl: authCfg.verifyUrl, authHeader: authCfg.headerName, authPrefix: JSON.stringify(authCfg.headerPrefix),
+      token: { sha256: fingerprint(token), length: String(token).length, jwt: looksLikeJwt(token) }
+    };
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), authCfg.timeoutMs);
+    const started = Date.now();
     let res;
     try {
       res = await fetchImpl(authCfg.verifyUrl, {
@@ -55,21 +67,42 @@ export function createAuthClient(authCfg, { fetchImpl = globalThis.fetch, now = 
         redirect: 'manual'
       });
     } catch (e) {
-      log?.warn({ err: e.message }, 'backend d\'authentification injoignable');
+      const timeout = ctrl.signal.aborted;
+      log?.warn({ ...ctx, ms: Date.now() - started, err: e.message, cause: e.cause && (e.cause.code || e.cause.message) },
+        timeout ? `backend d'authentification : pas de réponse en ${authCfg.timeoutMs} ms` : 'backend d\'authentification injoignable (DNS, réseau, TLS ?)');
       throw new AuthError(503, 'auth_unavailable', 'Le service d\'authentification ne répond pas');
     } finally {
       clearTimeout(timer);
     }
+    const ms = Date.now() - started;
     if (res.status >= 200 && res.status < 300) {
       let body = null;
-      try { body = await res.json(); } catch { /* réponse vide ou non JSON : acceptée */ }
+      const text = await res.text().catch(() => '');
+      try { body = text ? JSON.parse(text) : null; } catch { /* réponse non JSON : acceptée */ }
+      log?.info({ ...ctx, status: res.status, ms, bodyKeys: body && typeof body === 'object' ? Object.keys(body) : typeof body },
+        'backend d\'authentification : jeton accepté');
       return body;
     }
-    // On vide le corps pour libérer la connexion.
-    try { await res.arrayBuffer(); } catch { /* ignoré */ }
-    if (res.status === 403) throw new AuthError(403, 'forbidden', 'Accès refusé');
-    if (res.status >= 400 && res.status < 500) throw new AuthError(401, 'invalid_token', 'Jeton invalide ou expiré');
-    log?.warn({ status: res.status }, 'réponse inattendue du backend d\'authentification');
+    const detail = { ...ctx, status: res.status, ms, location: res.headers.get('location') || undefined, body: await excerpt(res) };
+    if (res.status >= 300 && res.status < 400) {
+      // Une redirection n'est pas une validation : souvent une URL en http redirigée vers https,
+      // ou une route protégée qui renvoie vers une page de connexion.
+      log?.warn(detail, 'backend d\'authentification : redirection au lieu d\'une réponse (vérifie AUTH_VERIFY_URL : https ? bon chemin ?)');
+      throw new AuthError(503, 'auth_unavailable', 'Le service d\'authentification est mal configuré');
+    }
+    if (res.status === 404 || res.status === 405) {
+      log?.warn(detail, `backend d'authentification : route introuvable (${res.status}), vérifie AUTH_VERIFY_URL`);
+      throw new AuthError(503, 'auth_unavailable', 'Le service d\'authentification est mal configuré');
+    }
+    if (res.status === 403) {
+      log?.warn(detail, 'backend d\'authentification : accès refusé (403)');
+      throw new AuthError(403, 'forbidden', 'Accès refusé');
+    }
+    if (res.status >= 400 && res.status < 500) {
+      log?.warn(detail, `backend d'authentification : jeton refusé (${res.status})`);
+      throw new AuthError(401, 'invalid_token', 'Jeton invalide ou expiré');
+    }
+    log?.warn(detail, `backend d'authentification : erreur ${res.status}`);
     throw new AuthError(503, 'auth_unavailable', 'Le service d\'authentification est indisponible');
   }
 
@@ -89,6 +122,7 @@ export function createAuthClient(authCfg, { fetchImpl = globalThis.fetch, now = 
     const key = hash(token);
     const hit = cache.get(key);
     if (hit && hit.expires > now()) {
+      log?.debug({ token: { sha256: fingerprint(token) }, cached: hit.error ? hit.error.code : 'ok' }, 'authentification : réponse en cache');
       if (hit.error) throw hit.error;
       return { userId: hit.userId };
     }
@@ -104,9 +138,11 @@ export function createAuthClient(authCfg, { fetchImpl = globalThis.fetch, now = 
     }
     const userId = userIdFrom(body, token);
     if (!userId || userId.length > 200) {
-      log?.error('identifiant utilisateur introuvable dans la réponse du backend d\'authentification (voir AUTH_USER_ID_PATHS)');
+      log?.error({ token: { sha256: fingerprint(token), jwt: looksLikeJwt(token) }, userIdPaths: authCfg.userIdPaths, bodyKeys: body && typeof body === 'object' ? Object.keys(body) : typeof body },
+        'identifiant utilisateur introuvable dans la réponse du backend d\'authentification (voir AUTH_USER_ID_PATHS)');
       throw new AuthError(502, 'auth_no_user_id', 'Impossible d\'identifier l\'utilisateur');
     }
+    log?.info({ userId }, 'authentification réussie');
     if (authCfg.cacheTtlMs > 0) remember(key, { userId, expires: now() + authCfg.cacheTtlMs });
     return { userId };
   }

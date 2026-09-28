@@ -6,6 +6,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+### Modifié
+- API : journaux détaillés de l'authentification déléguée (configuration au démarrage, statut, durée, redirection et extrait de réponse du backend d'authentification ; jamais le jeton).
+- API : une route de vérification introuvable (404, 405) ou une redirection renvoie désormais `503 auth_unavailable` (mauvaise configuration) au lieu de `401 invalid_token`.
+- Extension : un jeton collé avec son préfixe `Bearer ` est accepté.
+
 ## [1.2.0] - 2026-09-28
 
 ### Ajouté
