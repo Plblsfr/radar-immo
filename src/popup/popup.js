@@ -15,6 +15,15 @@ const dash = (hash = '') => ext.tabs.create({ url: ext.runtime.getURL('dashboard
   document.getElementById('nDrop').textContent = list.filter((l) => l.priceHistory && l.priceHistory.length > 1 &&
     l.priceHistory[l.priceHistory.length - 1].price < l.priceHistory[0].price).length;
 
+  const C = globalThis.RadarCloud;
+  if (C) {
+    const c = await C.getState();
+    const el = document.getElementById('cloud');
+    el.textContent = c.token ? (c.status === 'error' ? 'Synchronisation en échec, nouvel essai bientôt' : 'Compte connecté · synchronisé')
+      : c.status === 'expired' ? 'Session expirée : reconnecte-toi dans Données' : '';
+    if (c.token) ext.runtime.sendMessage({ type: 'cloudSync' }).catch(() => {});
+  }
+
   document.getElementById('dash').onclick = () => dash();
   document.getElementById('crits').onclick = () => dash('#criteres');
   document.getElementById('compare').onclick = () => dash('#comparer');

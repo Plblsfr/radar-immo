@@ -506,13 +506,38 @@
     const { settings } = await ext.storage.local.get('settings');
     return deepMerge(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), settings || {});
   }
-  async function saveSettings(s) { if (hasChrome) await ext.storage.local.set({ settings: s }); }
+  // `updatedAt` / `settingsUpdatedAt` datent chaque modification pour la synchronisation (lib/cloud.js).
+  async function saveSettings(s, { updatedAt } = {}) {
+    if (hasChrome) await ext.storage.local.set({ settings: s, settingsUpdatedAt: updatedAt || Date.now() });
+  }
   async function getListings() {
     if (!hasChrome) return {};
     const { listings } = await ext.storage.local.get('listings');
     return listings || {};
   }
-  async function saveListings(all) { if (hasChrome) await ext.storage.local.set({ listings: all }); }
+  const sameValue = (a, b) => a === b || (typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b));
+  function sameRecord(a, b) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    keys.delete('updatedAt');
+    for (const k of keys) if (!sameValue(a[k], b[k])) return false;
+    return true;
+  }
+  const TOMBSTONE_TTL = 180 * 24 * 3600 * 1000;
+  /** Enregistre toutes les annonces. Date les annonces modifiées et garde une trace (« tombe »)
+   *  des annonces supprimées, pour que la synchronisation les propage. */
+  async function saveListings(all) {
+    if (!hasChrome) return;
+    const now = Date.now();
+    const { listings: prev = {}, deleted = {} } = await ext.storage.local.get(['listings', 'deleted']);
+    let tombs = false;
+    Object.keys(all).forEach((id) => {
+      if (!prev[id] || !sameRecord(prev[id], all[id])) all[id].updatedAt = now;
+      if (deleted[id]) { delete deleted[id]; tombs = true; }
+    });
+    Object.keys(prev).forEach((id) => { if (!(id in all)) { deleted[id] = now; tombs = true; } });
+    Object.keys(deleted).forEach((id) => { if (now - deleted[id] > TOMBSTONE_TTL) { delete deleted[id]; tombs = true; } });
+    await ext.storage.local.set(tombs ? { listings: all, deleted } : { listings: all });
+  }
 
   // Enregistre / met à jour une annonce vue (historique de prix inclus)
   async function upsertListing(l, { save } = {}) {

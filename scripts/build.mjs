@@ -4,6 +4,11 @@
  *   dist/radar-immo-<version>-chrome.zip   → Chrome / Edge / Brave (chrome://extensions)
  *   dist/radar-immo-<version>-firefox.zip  → à envoyer sur addons.mozilla.org pour signature
  * Les archives sont reproductibles (fichiers triés, dates fixes).
+ *
+ * Variables d'environnement facultatives (compte et synchronisation, voir lib/cloud.js) :
+ *   RADAR_API_URL    adresse de l'API Radar Immo, ex. https://api.exemple.fr
+ *   RADAR_LOGIN_URL  page de connexion du front-end, ex. https://app.exemple.fr/connexion-extension
+ *                    (restreint aussi la page de retour de connexion à cette origine)
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -76,9 +81,33 @@ function zip(entries) {
   return Buffer.concat([...locals, cd, end]);
 }
 
+// ── URL du service injectées au build
+const service = { api: process.env.RADAR_API_URL || '', login: process.env.RADAR_LOGIN_URL || '' };
+for (const [k, v] of Object.entries(service)) {
+  if (v && !/^https:\/\/[^\s'"]+$/.test(v) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[^\s'"]*)?$/.test(v)) {
+    console.error(`✗ URL invalide pour ${k} : ${v} (https:// obligatoire, sauf localhost)`);
+    process.exit(1);
+  }
+}
+function transform(name, data) {
+  if (name === 'lib/cloud.js') {
+    let txt = data.toString('utf8');
+    if (service.api) txt = txt.replace("const DEFAULT_API_URL = '';", `const DEFAULT_API_URL = ${JSON.stringify(service.api)};`);
+    if (service.login) txt = txt.replace("const DEFAULT_LOGIN_URL = '';", `const DEFAULT_LOGIN_URL = ${JSON.stringify(service.login)};`);
+    return Buffer.from(txt, 'utf8');
+  }
+  if (name === 'manifest.json' && service.login) {
+    const m = JSON.parse(data.toString('utf8'));
+    (m.web_accessible_resources || []).forEach((w) => { w.matches = [new URL(service.login).origin + '/*']; });
+    return Buffer.from(JSON.stringify(m, null, 2) + '\n', 'utf8');
+  }
+  return data;
+}
+if (service.api || service.login) console.log(`• API : ${service.api || '(non définie)'} · connexion : ${service.login || '(non définie)'}`);
+
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
-const entries = files.map((name) => ({ name, data: readFileSync(join(src, name)) }));
+const entries = files.map((name) => ({ name, data: transform(name, readFileSync(join(src, name))) }));
 const archive = zip(entries);
 for (const target of ['chrome', 'firefox']) {
   const out = join(dist, `radar-immo-${pkg.version}-${target}.zip`);

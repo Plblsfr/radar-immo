@@ -26,6 +26,7 @@
     "service_worker": "background.js",
     "scripts": [
       "lib/radar.js",
+      "lib/cloud.js",
       "background.js"
     ]
   },
@@ -34,7 +35,8 @@
     "unlimitedStorage",
     "activeTab",
     "scripting",
-    "contextMenus"
+    "contextMenus",
+    "alarms"
   ],
   "host_permissions": [
     "https://*.leboncoin.fr/*",
@@ -85,6 +87,16 @@
         "content/content.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "auth/callback.html"
+      ],
+      "matches": [
+        "https://*/*"
+      ]
     }
   ],
   "browser_specific_settings": {

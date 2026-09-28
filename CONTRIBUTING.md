@@ -47,7 +47,7 @@ npm run test:e2e
 
 ## Conventions
 
-- **Aucune dépendance d'exécution, aucune étape de build** : le code de `src/` est publié tel quel. C'est ce qui rend la relecture par Mozilla simple et rapide. Ne pas introduire de bundler, de minifieur ni de framework.
+- **Aucune dépendance d'exécution, aucune étape de build** pour l'extension : le code de `src/` est publié tel quel (seules les adresses du service peuvent être injectées au build). C'est ce qui rend la relecture par Mozilla simple et rapide. Ne pas introduire de bundler, de minifieur ni de framework.
 - **JavaScript moderne sans module** dans `src/` : les scripts de page ne peuvent pas être des modules ES. La logique partagée va dans `lib/radar.js`, qui expose `globalThis.RadarImmo`.
 - **Compatible Chrome et Firefox** : passe par `ext` (`browser` ou `chrome`), jamais directement par `chrome.*`. Vérifie qu'une API existe sur Firefox Android avant de l'utiliser, sinon protège l'appel.
 - **Sécurité de l'affichage** : tout texte venant d'une page d'annonce doit passer par `esc()` avant d'être inséré dans du HTML.
@@ -73,6 +73,7 @@ npm run test:e2e
 | `npm test` | Tests unitaires de `lib/radar.js` : extraction, score, finance, doublons, URLs |
 | `npm run test:e2e` | Extension chargée dans Chromium (ordinateur et mobile), sur des pages simulées, sans accès réseau |
 | `npm run screenshots` | Idem, et régénère `docs/screenshots/` |
+| `cd server && npm test` | Tests de l'API. Avec `TEST_DATABASE_URL`, tests complets sur un vrai PostgreSQL (schéma temporaire) |
 
 ## Publier une version
 
