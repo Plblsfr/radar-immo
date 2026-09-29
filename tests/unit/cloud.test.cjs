@@ -30,7 +30,7 @@ function fakeServer() {
   globalThis.fetch = async (url, opt) => {
     const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
     const body = opt.body ? JSON.parse(opt.body) : null;
-    if (url === 'https://auth.test/refresh') {
+    if (url === 'https://auth.test/api/auth/extension/refresh') {
       auth.refreshCalls++;
       if (auth.refreshStatus !== 200 || body.refreshToken !== auth.refresh) return json(auth.refreshStatus === 200 ? 401 : auth.refreshStatus, {});
       auth.valid = 'tok-' + auth.refreshCalls; auth.refresh = 'rt-' + (auth.refreshCalls + 1);
@@ -158,7 +158,7 @@ describe('sync', () => {
 
   test('jeton expiré : renouvelé automatiquement puis la requête est rejouée', async () => {
     const srv = fakeServer();
-    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.setState({ apiUrl: 'https://api.test', authUrl: 'https://auth.test' });
     await C.connectWithToken('tok', { refreshToken: 'rt-1', expiresIn: 900 });
     srv.auth.valid = 'expiré'; // le jeton en main n'est plus accepté par le serveur
     const r = await C.sync();
@@ -171,7 +171,7 @@ describe('sync', () => {
 
   test('jeton bientôt expiré : renouvelé avant l\'appel', async () => {
     const srv = fakeServer();
-    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.setState({ apiUrl: 'https://api.test', authUrl: 'https://auth.test' });
     await C.connectWithToken('tok', { refreshToken: 'rt-1', expiresIn: 30 }); // expire dans 30 s < marge d'1 min
     srv.auth.valid = 'tok-1';
     await C.sync();
@@ -181,7 +181,7 @@ describe('sync', () => {
 
   test('renouvellement refusé : session expirée, visible dans l\'état', async () => {
     const srv = fakeServer();
-    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.setState({ apiUrl: 'https://api.test', authUrl: 'https://auth.test' });
     await C.connectWithToken('tok', { refreshToken: 'rt-1' });
     srv.auth.valid = 'expiré'; srv.auth.refreshStatus = 401;
     await assert.rejects(C.sync(), (e) => e.status === 401);
@@ -191,7 +191,7 @@ describe('sync', () => {
 
   test('backend d\'authentification en panne pendant le renouvellement : on garde le jeton de renouvellement', async () => {
     const srv = fakeServer();
-    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.setState({ apiUrl: 'https://api.test', authUrl: 'https://auth.test' });
     await C.connectWithToken('tok', { refreshToken: 'rt-1' });
     srv.auth.valid = 'expiré'; srv.auth.refreshStatus = 503;
     await assert.rejects(C.sync());
@@ -202,6 +202,14 @@ describe('sync', () => {
     assert.equal((await C.getState()).status, 'ok');
   });
 
+  test('seuls les domaines se configurent, les chemins sont fixes', () => {
+    assert.equal(C.loginUrlOf({ appUrl: 'https://plbls.fr/' }), 'https://plbls.fr/connexion-extension');
+    assert.equal(C.refreshUrlOf({ authUrl: 'https://api.plbls.fr/autre/chemin' }), 'https://api.plbls.fr/api/auth/extension/refresh');
+    assert.equal(C.loginUrlOf({ loginUrl: 'https://plbls.fr/connexion-extension' }), 'https://plbls.fr/connexion-extension', 'ancien réglage repris');
+    assert.equal(C.refreshUrlOf({ authUrl: 'pas une url' }), '');
+    assert.equal(C.loginUrlOf({}), '');
+  });
+
   test('non connecté : aucune requête', async () => {
     const srv = fakeServer();
     assert.equal((await C.sync()).skipped, true);
@@ -210,7 +218,7 @@ describe('sync', () => {
 
   test('connexion via la page du front-end : state vérifié', async () => {
     fakeServer();
-    await C.setState({ apiUrl: 'https://api.test', loginUrl: 'https://app.test/connexion-extension' });
+    await C.setState({ apiUrl: 'https://api.test', appUrl: 'https://app.test/chemin-ignore' });
     const url = new URL(await C.startLogin());
     assert.equal(url.origin + url.pathname, 'https://app.test/connexion-extension');
     assert.equal(url.searchParams.get('redirect_uri'), 'chrome-extension://abc/auth/callback.html');

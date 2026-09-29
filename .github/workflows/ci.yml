@@ -88,8 +88,8 @@ jobs:
       - run: npm run build
         env:
           RADAR_API_URL: ${{ vars.RADAR_API_URL }}
-          RADAR_LOGIN_URL: ${{ vars.RADAR_LOGIN_URL }}
-          RADAR_REFRESH_URL: ${{ vars.RADAR_REFRESH_URL }}
+          RADAR_APP_URL: ${{ vars.RADAR_APP_URL }}
+          RADAR_AUTH_URL: ${{ vars.RADAR_AUTH_URL }}
       - name: Extraire les notes de version du CHANGELOG
         id: version
         run: |

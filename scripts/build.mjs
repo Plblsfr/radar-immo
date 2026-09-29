@@ -6,10 +6,12 @@
  * Les archives sont reproductibles (fichiers triés, dates fixes).
  *
  * Variables d'environnement facultatives (compte et synchronisation, voir lib/cloud.js) :
- *   RADAR_API_URL    adresse de l'API Radar Immo, ex. https://api.exemple.fr
- *   RADAR_LOGIN_URL  page de connexion du front-end, ex. https://app.exemple.fr/connexion-extension
- *   RADAR_REFRESH_URL route de renouvellement du jeton (reconnexion automatique), ex. https://api.exemple.fr/api/auth/extension/refresh
- *                    (restreint aussi la page de retour de connexion à cette origine)
+ *   RADAR_API_URL   domaine de l'API Radar Immo, ex. https://radar-api.plbls.fr
+ *   RADAR_APP_URL   domaine de l'application web, ex. https://plbls.fr : connexion sur <domaine>/connexion-extension
+ *                   (restreint aussi la page de retour de connexion à ce domaine)
+ *   RADAR_AUTH_URL  domaine du backend d'authentification, ex. https://api.plbls.fr :
+ *                   renouvellement du jeton sur <domaine>/api/auth/extension/refresh
+ * Seuls les domaines se configurent : les chemins sont fixés dans lib/cloud.js.
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -83,7 +85,12 @@ function zip(entries) {
 }
 
 // ── URL du service injectées au build
-const service = { api: process.env.RADAR_API_URL || '', login: process.env.RADAR_LOGIN_URL || '', refresh: process.env.RADAR_REFRESH_URL || '' };
+const originOnly = (name) => {
+  const v = process.env[name] || '';
+  if (!v) return '';
+  try { return new URL(v).origin; } catch { console.error(`✗ ${name} invalide : ${v}`); process.exit(1); }
+};
+const service = { api: originOnly('RADAR_API_URL'), app: originOnly('RADAR_APP_URL'), auth: originOnly('RADAR_AUTH_URL') };
 for (const [k, v] of Object.entries(service)) {
   if (v && !/^https:\/\/[^\s'"]+$/.test(v) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[^\s'"]*)?$/.test(v)) {
     console.error(`✗ URL invalide pour ${k} : ${v} (https:// obligatoire, sauf localhost)`);
@@ -94,18 +101,18 @@ function transform(name, data) {
   if (name === 'lib/cloud.js') {
     let txt = data.toString('utf8');
     if (service.api) txt = txt.replace("const DEFAULT_API_URL = '';", `const DEFAULT_API_URL = ${JSON.stringify(service.api)};`);
-    if (service.login) txt = txt.replace("const DEFAULT_LOGIN_URL = '';", `const DEFAULT_LOGIN_URL = ${JSON.stringify(service.login)};`);
-    if (service.refresh) txt = txt.replace("const DEFAULT_REFRESH_URL = '';", `const DEFAULT_REFRESH_URL = ${JSON.stringify(service.refresh)};`);
+    if (service.app) txt = txt.replace("const DEFAULT_APP_URL = '';", `const DEFAULT_APP_URL = ${JSON.stringify(service.app)};`);
+    if (service.auth) txt = txt.replace("const DEFAULT_AUTH_URL = '';", `const DEFAULT_AUTH_URL = ${JSON.stringify(service.auth)};`);
     return Buffer.from(txt, 'utf8');
   }
-  if (name === 'manifest.json' && service.login) {
+  if (name === 'manifest.json' && service.app) {
     const m = JSON.parse(data.toString('utf8'));
-    (m.web_accessible_resources || []).forEach((w) => { w.matches = [new URL(service.login).origin + '/*']; });
+    (m.web_accessible_resources || []).forEach((w) => { w.matches = [service.app + '/*']; });
     return Buffer.from(JSON.stringify(m, null, 2) + '\n', 'utf8');
   }
   return data;
 }
-if (service.api || service.login || service.refresh) console.log(`• API : ${service.api || '(non définie)'} · connexion : ${service.login || '(non définie)'} · renouvellement : ${service.refresh || '(non défini)'}`);
+if (service.api || service.app || service.auth) console.log(`• API : ${service.api || '(non définie)'} · application web : ${service.app || '(non définie)'} · authentification : ${service.auth || '(non définie)'}`);
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });

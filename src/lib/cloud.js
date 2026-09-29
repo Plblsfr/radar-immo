@@ -6,10 +6,13 @@
 (function (root) {
   'use strict';
 
-  // Valeurs par défaut, remplacées au build par RADAR_API_URL, RADAR_LOGIN_URL et RADAR_REFRESH_URL (voir scripts/build.mjs).
-  const DEFAULT_API_URL = '';
-  const DEFAULT_LOGIN_URL = '';
-  const DEFAULT_REFRESH_URL = '';
+  // Domaines par défaut, remplacés au build par RADAR_API_URL, RADAR_APP_URL et RADAR_AUTH_URL (voir scripts/build.mjs).
+  // Seuls les domaines sont configurables : les chemins sont fixes.
+  const DEFAULT_API_URL = '';   // API Radar Immo, ex. https://radar-api.plbls.fr
+  const DEFAULT_APP_URL = '';   // application web, ex. https://plbls.fr
+  const DEFAULT_AUTH_URL = '';  // backend d'authentification, ex. https://api.plbls.fr
+  const LOGIN_PATH = '/connexion-extension';
+  const REFRESH_PATH = '/api/auth/extension/refresh';
   const REFRESH_MARGIN = 60 * 1000; // renouvelle le jeton une minute avant son expiration
 
   const KEY = 'cloud';
@@ -25,7 +28,7 @@
   // ───────────────────────── État local de la connexion (clé « cloud », jamais exportée)
   async function getState() {
     const { [KEY]: s } = await local.get(KEY);
-    return Object.assign({ apiUrl: '', loginUrl: '', refreshUrl: '', token: null, refreshToken: null, tokenExpiresAt: null, userId: null,
+    return Object.assign({ apiUrl: '', appUrl: '', authUrl: '', token: null, refreshToken: null, tokenExpiresAt: null, userId: null,
       cursor: 0, lastPushAt: 0, lastSyncAt: 0, status: 'off', lastError: null }, s || {});
   }
   async function setState(patch) {
@@ -35,8 +38,13 @@
   }
   const trimSlash = (u) => String(u || '').trim().replace(/\/+$/, '');
   const apiUrlOf = (s) => trimSlash(s.apiUrl || DEFAULT_API_URL);
-  const loginUrlOf = (s) => String(s.loginUrl || DEFAULT_LOGIN_URL).trim();
-  const refreshUrlOf = (s) => String(s.refreshUrl || DEFAULT_REFRESH_URL).trim();
+  /** Ne garde que l'origine (https://domaine[:port]) : un chemin saisi par erreur est ignoré. */
+  const originOf = (u) => { try { return u ? new URL(String(u).trim()).origin : ''; } catch (e) { return ''; } };
+  // loginUrl / refreshUrl : anciens réglages (URL complètes), repris pour leur domaine.
+  const appUrlOf = (s) => originOf(s.appUrl || s.loginUrl || DEFAULT_APP_URL);
+  const authUrlOf = (s) => originOf(s.authUrl || s.refreshUrl || DEFAULT_AUTH_URL);
+  const loginUrlOf = (s) => { const o = appUrlOf(s); return o ? o + LOGIN_PATH : ''; };
+  const refreshUrlOf = (s) => { const o = authUrlOf(s); return o ? o + REFRESH_PATH : ''; };
 
   // ───────────────────────── Appels HTTP
   async function request(apiUrl, token, path, { method = 'GET', body } = {}) {
@@ -69,7 +77,7 @@
   async function startLogin() {
     const s = await getState();
     const base = loginUrlOf(s);
-    if (!base) throw new CloudError(0, 'no_login_url', 'Adresse de la page de connexion non configurée');
+    if (!base) throw new CloudError(0, 'no_login_url', 'Adresse de l\'application web non configurée');
     const state = randomState();
     await setState({ pendingState: state, pendingAt: Date.now() });
     const u = new URL(base);
@@ -110,7 +118,7 @@
   }
 
   // ───────────────────────── Session : renouvellement automatique du jeton
-  // Contrat attendu du backend d'authentification (RADAR_REFRESH_URL) :
+  // Contrat attendu du backend d'authentification (<serveur d'authentification> + REFRESH_PATH) :
   //   POST <url>  { "refreshToken": "…" }
   //   200 → { "accessToken", "refreshToken"?, "expiresIn"? (secondes) }  (snake_case accepté aussi)
   //   4xx → session terminée ; 5xx ou réseau → nouvel essai plus tard.
@@ -298,10 +306,10 @@
   }
 
   const api = {
-    DEFAULT_API_URL, DEFAULT_LOGIN_URL, DEFAULT_REFRESH_URL, CloudError,
+    DEFAULT_API_URL, DEFAULT_APP_URL, DEFAULT_AUTH_URL, LOGIN_PATH, REFRESH_PATH, CloudError,
     getState, setState, startLogin, completeLogin, connectWithToken, disconnect, wipeRemote, sync, refreshSession,
     createShare, getShare, revokeShare,
-    collectChanges, applyRemote, apiUrlOf, loginUrlOf, refreshUrlOf
+    collectChanges, applyRemote, apiUrlOf, appUrlOf, authUrlOf, loginUrlOf, refreshUrlOf
   };
   root.RadarCloud = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

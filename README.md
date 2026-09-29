@@ -150,9 +150,15 @@ Une fois connecté (*Tableau de bord → Données → Se connecter*), tes critè
 - **Connexion** : l'extension ouvre la page de connexion de l'application web, qui lui renvoie un jeton après ton accord. Tu peux aussi coller un jeton dans *Réglages avancés*.
 - **Hors ligne** : tout continue de fonctionner. Les modifications partent à la synchronisation suivante.
 - **Session expirée** : une pastille **!** apparaît sur l'icône de l'extension, et un bandeau *Session expirée* s'affiche dans le popup et le tableau de bord, avec un bouton *Se reconnecter*. Tes données locales sont conservées et repartent à la reconnexion.
-- **Reconnexion automatique** : si la page de connexion transmet aussi un jeton de renouvellement (`refresh_token`), l'extension renouvelle son jeton une minute avant son expiration, ou dès qu'un appel est refusé, sans rien te demander. La route de renouvellement se configure au build (`RADAR_REFRESH_URL`) ou dans *Réglages avancés*. Contrat attendu : `POST <url>` avec `{ "refreshToken": "…" }`, réponse `{ "accessToken", "refreshToken"?, "expiresIn"? }` (le snake_case est accepté). Un 4xx met fin à la session, un 5xx ou une erreur réseau laisse la main au prochain essai.
+- **Reconnexion automatique** : si la page de connexion transmet aussi un jeton de renouvellement (`refresh_token`), l'extension renouvelle son jeton une minute avant son expiration, ou dès qu'un appel est refusé, sans rien te demander. La route de renouvellement est `<serveur d'authentification>/api/auth/extension/refresh`. Contrat attendu : `POST <url>` avec `{ "refreshToken": "…" }`, réponse `{ "accessToken", "refreshToken"?, "expiresIn"? }` (le snake_case est accepté). Un 4xx met fin à la session, un 5xx ou une erreur réseau laisse la main au prochain essai.
 
-Les adresses de l'API et de la page de connexion sont intégrées au build (`RADAR_API_URL`, `RADAR_LOGIN_URL`, voir [Développement](#développement)) ou saisies dans *Réglages avancés*.
+Trois **domaines** se configurent, au build (voir [Développement](#développement)) ou dans *Réglages avancés*. Les chemins sont fixes :
+
+| Réglage | Variable de build | Exemple | Utilisé pour |
+|---|---|---|---|
+| API Radar Immo | `RADAR_API_URL` | `https://radar-api.plbls.fr` | synchronisation, partage |
+| Application web | `RADAR_APP_URL` | `https://plbls.fr` | connexion sur `/connexion-extension` |
+| Serveur d'authentification | `RADAR_AUTH_URL` | `https://api.plbls.fr` | renouvellement du jeton sur `/api/auth/extension/refresh` |
 
 ## Confidentialité
 
@@ -168,7 +174,7 @@ npm test             # tests unitaires (runner intégré de Node)
 npm run build        # génère dist/radar-immo-<version>-{chrome,firefox}.zip
 
 # Build relié au service (adresses intégrées au paquet)
-RADAR_API_URL=https://api.exemple.fr RADAR_LOGIN_URL=https://app.exemple.fr/connexion-extension npm run build
+RADAR_API_URL=https://radar-api.exemple.fr RADAR_APP_URL=https://exemple.fr RADAR_AUTH_URL=https://api.exemple.fr npm run build
 
 npm install          # uniquement pour les tests de bout en bout (Playwright)
 npx playwright install chromium
