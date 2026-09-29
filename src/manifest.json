@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Radar Immo — assistant d'achat immobilier",
   "short_name": "Radar Immo",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Note chaque annonce selon tes critères (budget, DPE, quartiers bannis…), suit les prix et repère les doublons entre Leboncoin, SeLoger, PAP, Bien'ici…",
   "icons": {
     "16": "icons/icon16.png",

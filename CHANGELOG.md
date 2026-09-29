@@ -6,6 +6,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+## [1.3.0] - 2026-09-29
+
 ### Ajouté
 - **Partage public d'une annonce** : dans le détail d'une annonce du tableau de bord, *Partager* crée un lien secret (`/s/<jeton>`) que l'on peut envoyer à un proche sans compte ni extension. La page publique affiche le prix à jour, la baisse de prix, les caractéristiques, le DPE, le score et un message facultatif, avec un aperçu dans les messageries. Les notes sont incluses seulement si on le choisit. Le lien est désactivable et peut expirer (7 jours, 30 jours ou jamais).
 - API : routes `/v1/shares`, `/public/shares/:token` et `/s/:token`, table `shares` (migration `002_shares.sql`), variable `SHARE_URL_PREFIX`.
@@ -63,7 +65,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 - Prise en charge de 19 sites d'annonces.
 - Interface épurée avec thème clair et sombre automatique.
 
-[Non publié]: ../../compare/v1.2.0...HEAD
+[Non publié]: ../../compare/v1.3.0...HEAD
+[1.3.0]: ../../compare/v1.2.0...v1.3.0
 [1.2.0]: ../../compare/v1.1.0...v1.2.0
 [1.1.0]: ../../compare/v1.0.0...v1.1.0
 [1.0.0]: ../../releases/tag/v1.0.0
