@@ -6,6 +6,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+## [1.3.1] - 2026-09-29
+
 ### Modifié
 - Extension : la route de renouvellement du jeton est **configurable**, car elle appartient au backend d'authentification, externe à Radar Immo. Le champ *Renouvellement du jeton* (et `RADAR_AUTH_URL` au build) accepte un domaine, qui donne le chemin par défaut `/auth/extension/refresh`, ou une URL complète. L'adresse réellement appelée s'affiche sous le champ.
 
@@ -71,7 +73,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 - Prise en charge de 19 sites d'annonces.
 - Interface épurée avec thème clair et sombre automatique.
 
-[Non publié]: ../../compare/v1.3.0...HEAD
+[Non publié]: ../../compare/v1.3.1...HEAD
+[1.3.1]: ../../compare/v1.3.0...v1.3.1
 [1.3.0]: ../../compare/v1.2.0...v1.3.0
 [1.2.0]: ../../compare/v1.1.0...v1.2.0
 [1.1.0]: ../../compare/v1.0.0...v1.1.0
