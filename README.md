@@ -149,7 +149,8 @@ Une fois connecté (*Tableau de bord → Données → Se connecter*), tes critè
 
 - **Connexion** : l'extension ouvre la page de connexion de l'application web, qui lui renvoie un jeton après ton accord. Tu peux aussi coller un jeton dans *Réglages avancés*.
 - **Hors ligne** : tout continue de fonctionner. Les modifications partent à la synchronisation suivante.
-- **Session expirée** : tes données locales sont conservées, il suffit de te reconnecter.
+- **Session expirée** : une pastille **!** apparaît sur l'icône de l'extension, et un bandeau *Session expirée* s'affiche dans le popup et le tableau de bord, avec un bouton *Se reconnecter*. Tes données locales sont conservées et repartent à la reconnexion.
+- **Reconnexion automatique** : si la page de connexion transmet aussi un jeton de renouvellement (`refresh_token`), l'extension renouvelle son jeton une minute avant son expiration, ou dès qu'un appel est refusé, sans rien te demander. La route de renouvellement se configure au build (`RADAR_REFRESH_URL`) ou dans *Réglages avancés*. Contrat attendu : `POST <url>` avec `{ "refreshToken": "…" }`, réponse `{ "accessToken", "refreshToken"?, "expiresIn"? }` (le snake_case est accepté). Un 4xx met fin à la session, un 5xx ou une erreur réseau laisse la main au prochain essai.
 
 Les adresses de l'API et de la page de connexion sont intégrées au build (`RADAR_API_URL`, `RADAR_LOGIN_URL`, voir [Développement](#développement)) ou saisies dans *Réglages avancés*.
 

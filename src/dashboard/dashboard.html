@@ -23,6 +23,10 @@
 </header>
 
 <main>
+  <div class="callout session-banner" id="sessionBanner" role="alert" hidden>
+    <span><b>Session expirée.</b> Tes annonces et tes critères ne sont plus synchronisés. Rien n'est perdu : tout repartira dès que tu te reconnectes.</span>
+    <button class="btn sm primary" id="bannerLogin">Se reconnecter</button>
+  </div>
   <!-- ANNONCES -->
   <section id="tab-annonces" class="tab on">
     <div class="toolbar">
@@ -156,6 +160,7 @@
         <div class="fields" style="margin-top:12px">
           <label>Adresse de l'API<input id="acApi" type="url" placeholder="https://api.exemple.fr"></label>
           <label>Page de connexion<input id="acLoginUrl" type="url" placeholder="https://app.exemple.fr/connexion-extension"></label>
+          <label>Renouvellement du jeton<input id="acRefreshUrl" type="url" placeholder="https://api.exemple.fr/…/refresh"></label>
         </div>
         <form id="acTokenForm" class="row" style="margin-top:12px">
           <input id="acToken" placeholder="Ou colle un jeton d'accès" style="flex:1;min-width:200px" autocomplete="off" aria-label="Jeton d'accès">

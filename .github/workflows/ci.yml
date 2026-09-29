@@ -89,6 +89,7 @@ jobs:
         env:
           RADAR_API_URL: ${{ vars.RADAR_API_URL }}
           RADAR_LOGIN_URL: ${{ vars.RADAR_LOGIN_URL }}
+          RADAR_REFRESH_URL: ${{ vars.RADAR_REFRESH_URL }}
       - name: Extraire les notes de version du CHANGELOG
         id: version
         run: |

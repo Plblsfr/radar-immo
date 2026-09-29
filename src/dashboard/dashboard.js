@@ -428,6 +428,9 @@ async function renderAccount() {
   $('#acSync').hidden = !on; $('#acLogout').hidden = !on;
   if (document.activeElement !== $('#acApi')) $('#acApi').value = c.apiUrl || '';
   if (document.activeElement !== $('#acLoginUrl')) $('#acLoginUrl').value = c.loginUrl || '';
+  if (document.activeElement !== $('#acRefreshUrl')) $('#acRefreshUrl').value = c.refreshUrl || '';
+  $('#acRefreshUrl').placeholder = C.DEFAULT_REFRESH_URL || 'https://api.exemple.fr/…/refresh';
+  $('#sessionBanner').hidden = !(c.status === 'expired' && !c.token);
   $('#acApi').placeholder = C.DEFAULT_API_URL || 'https://api.exemple.fr';
   $('#acLoginUrl').placeholder = C.DEFAULT_LOGIN_URL || 'https://app.exemple.fr/connexion-extension';
 }
@@ -437,9 +440,17 @@ const requestSync = async () => {
 };
 $('#acApi').onchange = async (e) => { await C.setState({ apiUrl: e.target.value.trim() }); renderAccount(); };
 $('#acLoginUrl').onchange = async (e) => { await C.setState({ loginUrl: e.target.value.trim() }); renderAccount(); };
-$('#acLogin').onclick = async () => {
-  try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) { alert(e.message + ' — renseigne-la dans « Réglages avancés ».'); }
-};
+$('#acRefreshUrl').onchange = async (e) => { await C.setState({ refreshUrl: e.target.value.trim() }); renderAccount(); };
+async function login() {
+  try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) {
+    // Pas de page de connexion configurée : on amène sur le champ « colle un jeton ».
+    location.hash = 'donnees';
+    const d = $('#account details'); if (d) d.open = true;
+    $('#acToken').focus();
+  }
+}
+$('#acLogin').onclick = login;
+$('#bannerLogin').onclick = login;
 $('#acTokenForm').onsubmit = async (e) => {
   e.preventDefault();
   try {

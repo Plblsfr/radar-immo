@@ -8,6 +8,7 @@
  * Variables d'environnement facultatives (compte et synchronisation, voir lib/cloud.js) :
  *   RADAR_API_URL    adresse de l'API Radar Immo, ex. https://api.exemple.fr
  *   RADAR_LOGIN_URL  page de connexion du front-end, ex. https://app.exemple.fr/connexion-extension
+ *   RADAR_REFRESH_URL route de renouvellement du jeton (reconnexion automatique), ex. https://api.exemple.fr/api/auth/extension/refresh
  *                    (restreint aussi la page de retour de connexion à cette origine)
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from 'node:fs';
@@ -82,7 +83,7 @@ function zip(entries) {
 }
 
 // ── URL du service injectées au build
-const service = { api: process.env.RADAR_API_URL || '', login: process.env.RADAR_LOGIN_URL || '' };
+const service = { api: process.env.RADAR_API_URL || '', login: process.env.RADAR_LOGIN_URL || '', refresh: process.env.RADAR_REFRESH_URL || '' };
 for (const [k, v] of Object.entries(service)) {
   if (v && !/^https:\/\/[^\s'"]+$/.test(v) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[^\s'"]*)?$/.test(v)) {
     console.error(`✗ URL invalide pour ${k} : ${v} (https:// obligatoire, sauf localhost)`);
@@ -94,6 +95,7 @@ function transform(name, data) {
     let txt = data.toString('utf8');
     if (service.api) txt = txt.replace("const DEFAULT_API_URL = '';", `const DEFAULT_API_URL = ${JSON.stringify(service.api)};`);
     if (service.login) txt = txt.replace("const DEFAULT_LOGIN_URL = '';", `const DEFAULT_LOGIN_URL = ${JSON.stringify(service.login)};`);
+    if (service.refresh) txt = txt.replace("const DEFAULT_REFRESH_URL = '';", `const DEFAULT_REFRESH_URL = ${JSON.stringify(service.refresh)};`);
     return Buffer.from(txt, 'utf8');
   }
   if (name === 'manifest.json' && service.login) {
@@ -103,7 +105,7 @@ function transform(name, data) {
   }
   return data;
 }
-if (service.api || service.login) console.log(`• API : ${service.api || '(non définie)'} · connexion : ${service.login || '(non définie)'}`);
+if (service.api || service.login || service.refresh) console.log(`• API : ${service.api || '(non définie)'} · connexion : ${service.login || '(non définie)'} · renouvellement : ${service.refresh || '(non défini)'}`);
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });

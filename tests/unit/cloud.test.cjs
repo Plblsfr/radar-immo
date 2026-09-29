@@ -26,12 +26,19 @@ const reset = () => Object.keys(mem).forEach((k) => delete mem[k]);
 function fakeServer() {
   const rows = new Map(); let settings = null, version = 0;
   const calls = [];
+  const auth = { valid: 'tok', refresh: 'rt-1', refreshStatus: 200, refreshCalls: 0 };
   globalThis.fetch = async (url, opt) => {
-    const path = url.replace('https://api.test', '');
-    const body = opt.body ? JSON.parse(opt.body) : null;
-    calls.push({ path, body, auth: opt.headers.Authorization });
     const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
-    if (opt.headers.Authorization !== 'Bearer tok') return json(401, { error: 'invalid_token', message: 'Jeton invalide' });
+    const body = opt.body ? JSON.parse(opt.body) : null;
+    if (url === 'https://auth.test/refresh') {
+      auth.refreshCalls++;
+      if (auth.refreshStatus !== 200 || body.refreshToken !== auth.refresh) return json(auth.refreshStatus === 200 ? 401 : auth.refreshStatus, {});
+      auth.valid = 'tok-' + auth.refreshCalls; auth.refresh = 'rt-' + (auth.refreshCalls + 1);
+      return json(200, { access_token: auth.valid, refresh_token: auth.refresh, expires_in: 900 });
+    }
+    const path = url.replace('https://api.test', '');
+    calls.push({ path, body, auth: opt.headers.Authorization });
+    if (opt.headers.Authorization !== 'Bearer ' + auth.valid) return json(401, { error: 'invalid_token', message: 'Jeton invalide' });
     if (path === '/v1/me') return json(200, { userId: 'u1' });
     if (path === '/v1/sync') {
       if (body.settings && (!settings || settings.updatedAt < body.settings.updatedAt)) settings = Object.assign({}, body.settings, { version: ++version });
@@ -45,7 +52,7 @@ function fakeServer() {
     }
     return json(404, {});
   };
-  return { rows, calls, get settings() { return settings; }, put(id, updatedAt, data) { rows.set(id, { id, updatedAt, deleted: false, data, version: ++version }); } };
+  return { rows, calls, auth, get settings() { return settings; }, put(id, updatedAt, data) { rows.set(id, { id, updatedAt, deleted: false, data, version: ++version }); } };
 }
 
 describe('saveListings : suivi des modifications', () => {
@@ -147,6 +154,52 @@ describe('sync', () => {
     const st = await C.getState();
     assert.equal(st.status, 'expired'); assert.equal(st.token, null);
     assert.ok(mem.listings.a);
+  });
+
+  test('jeton expiré : renouvelé automatiquement puis la requête est rejouée', async () => {
+    const srv = fakeServer();
+    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.connectWithToken('tok', { refreshToken: 'rt-1', expiresIn: 900 });
+    srv.auth.valid = 'expiré'; // le jeton en main n'est plus accepté par le serveur
+    const r = await C.sync();
+    assert.equal(r.pushed, 0);
+    const st = await C.getState();
+    assert.equal(st.status, 'ok'); assert.equal(st.token, 'tok-1'); assert.equal(st.refreshToken, 'rt-2');
+    assert.ok(st.tokenExpiresAt > Date.now());
+    assert.equal(srv.auth.refreshCalls, 1);
+  });
+
+  test('jeton bientôt expiré : renouvelé avant l\'appel', async () => {
+    const srv = fakeServer();
+    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.connectWithToken('tok', { refreshToken: 'rt-1', expiresIn: 30 }); // expire dans 30 s < marge d'1 min
+    srv.auth.valid = 'tok-1';
+    await C.sync();
+    assert.equal((await C.getState()).token, 'tok-1');
+    assert.ok(srv.calls.filter((c) => c.path === '/v1/sync').every((c) => c.auth === 'Bearer tok-1'), 'aucun appel avec l\'ancien jeton');
+  });
+
+  test('renouvellement refusé : session expirée, visible dans l\'état', async () => {
+    const srv = fakeServer();
+    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.connectWithToken('tok', { refreshToken: 'rt-1' });
+    srv.auth.valid = 'expiré'; srv.auth.refreshStatus = 401;
+    await assert.rejects(C.sync(), (e) => e.status === 401);
+    const st = await C.getState();
+    assert.equal(st.status, 'expired'); assert.equal(st.token, null); assert.equal(st.refreshToken, null);
+  });
+
+  test('backend d\'authentification en panne pendant le renouvellement : on garde le jeton de renouvellement', async () => {
+    const srv = fakeServer();
+    await C.setState({ apiUrl: 'https://api.test', refreshUrl: 'https://auth.test/refresh' });
+    await C.connectWithToken('tok', { refreshToken: 'rt-1' });
+    srv.auth.valid = 'expiré'; srv.auth.refreshStatus = 503;
+    await assert.rejects(C.sync());
+    const st = await C.getState();
+    assert.equal(st.refreshToken, 'rt-1', 'le prochain essai pourra renouveler');
+    srv.auth.refreshStatus = 200;
+    await C.sync();
+    assert.equal((await C.getState()).status, 'ok');
   });
 
   test('non connecté : aucune requête', async () => {

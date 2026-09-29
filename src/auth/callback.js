@@ -14,7 +14,10 @@
   };
   if (p.get('error')) return show('Connexion annulée', p.get('error_description') || 'La connexion n\'a pas abouti.', false);
   try {
-    const s = await C.completeLogin({ token: p.get('token') || p.get('access_token'), state: p.get('state') });
+    const s = await C.completeLogin({
+      token: p.get('token') || p.get('access_token'), state: p.get('state'),
+      refreshToken: p.get('refresh_token'), expiresIn: p.get('expires_in')
+    });
     show('Tu es connecté', `Compte ${s.userId}. Tes critères et tes annonces vont se synchroniser.`, true);
     ext.runtime.sendMessage({ type: 'cloudSync' }).catch(() => {});
   } catch (e) {

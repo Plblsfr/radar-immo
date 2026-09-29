@@ -61,6 +61,18 @@ function scheduleSync() {
 if (ext.alarms && ext.alarms.onAlarm) ext.alarms.onAlarm.addListener((a) => { if (a.name === SYNC_ALARM) quiet(runSync()); });
 if (ext.runtime.onStartup) ext.runtime.onStartup.addListener(() => { scheduleSync(); quiet(runSync()); });
 
+// Session expirée : pastille « ! » sur l'icône, visible depuis n'importe quel onglet.
+async function showSessionState() {
+  if (!Cloud || !ext.action || !ext.action.setBadgeText) return;
+  const c = await Cloud.getState();
+  const expired = c.status === 'expired' && !c.token;
+  safe(() => ext.action.setBadgeText({ text: expired ? '!' : '' }));
+  if (expired) safe(() => ext.action.setBadgeBackgroundColor({ color: '#d97706' }));
+  safe(() => ext.action.setTitle({ title: expired ? 'Radar Immo : session expirée, clique pour te reconnecter' : 'Radar Immo' }));
+}
+showSessionState();
+ext.storage.onChanged.addListener((ch, area) => { if ((!area || area === 'local') && ch.cloud) showSessionState(); });
+
 // Pousse les modifications locales quelques secondes après la dernière écriture.
 let pushTimer = null;
 ext.storage.onChanged.addListener((ch, area) => {
