@@ -19,8 +19,14 @@ const dash = (hash = '') => ext.tabs.create({ url: ext.runtime.getURL('dashboard
   if (C) {
     const c = await C.getState();
     const el = document.getElementById('cloud');
-    el.textContent = c.token ? (c.status === 'error' ? 'Synchronisation en échec, nouvel essai bientôt' : 'Compte connecté · synchronisé')
-      : c.status === 'expired' ? 'Session expirée : reconnecte-toi dans Données' : '';
+    el.textContent = c.token ? (c.status === 'error' ? 'Synchronisation en échec, nouvel essai bientôt' : 'Compte connecté · synchronisé') : '';
+    if (!c.token && c.status === 'expired') {
+      document.getElementById('session').hidden = false;
+      document.getElementById('relogin').onclick = async () => {
+        try { await ext.tabs.create({ url: await C.startLogin() }); } catch (e) { dash('#donnees'); }
+        window.close();
+      };
+    }
     if (c.token) ext.runtime.sendMessage({ type: 'cloudSync' }).catch(() => {});
   }
 

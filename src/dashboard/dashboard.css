@@ -176,3 +176,7 @@ form.row input{min-width:0}
   tbody th{width:auto;position:sticky;left:0;background:var(--surface);z-index:1}
   .empty{margin:24px 0;padding:28px 20px}
 }
+
+/* Session expirée : bandeau visible sur tous les onglets */
+.session-banner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;border-left:4px solid #d97706;margin:0 0 var(--espace-6)}
+.session-banner span{flex:1;min-width:240px}

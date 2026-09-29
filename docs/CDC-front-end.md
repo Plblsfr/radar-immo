@@ -234,6 +234,7 @@ C'est par cette page que l'extension obtient le jeton de l'utilisateur. Le déro
    <redirect_uri>#token=<jeton>&state=<state reçu>
    ```
    **Annuler** : redirection vers `<redirect_uri>#error=access_denied&state=<state reçu>`.
+   **Reconnexion automatique (recommandé)** : si le backend principal fournit un jeton de renouvellement pour l'extension, l'ajouter au fragment avec sa durée de vie : `#token=<jeton>&refresh_token=<jeton de renouvellement>&expires_in=<secondes>&state=<state>`. L'extension renouvelle alors elle-même son jeton avant qu'il expire, sans que l'utilisateur ait à se reconnecter (voir « Renouvellement » dans le README de l'extension).
 5. L'extension vérifie le `state`, valide le jeton auprès de l'API, puis affiche « Tu es connecté ».
 
 **Exigences de sécurité (obligatoires)**

@@ -9,14 +9,16 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 ### Ajouté
 - **Partage public d'une annonce** : dans le détail d'une annonce du tableau de bord, *Partager* crée un lien secret (`/s/<jeton>`) que l'on peut envoyer à un proche sans compte ni extension. La page publique affiche le prix à jour, la baisse de prix, les caractéristiques, le DPE, le score et un message facultatif, avec un aperçu dans les messageries. Les notes sont incluses seulement si on le choisit. Le lien est désactivable et peut expirer (7 jours, 30 jours ou jamais).
 - API : routes `/v1/shares`, `/public/shares/:token` et `/s/:token`, table `shares` (migration `002_shares.sql`), variable `SHARE_URL_PREFIX`.
+- **Session expirée visible** : pastille « ! » sur l'icône de l'extension, bandeau avec *Se reconnecter* dans le popup et sur tous les onglets du tableau de bord.
+- **Reconnexion automatique** : si la connexion fournit un jeton de renouvellement (`refresh_token`, `expires_in`), l'extension renouvelle son jeton avant qu'il expire, et une fois de plus quand un appel est refusé (401), puis rejoue l'appel. Route fixe : `<serveur d'authentification>/api/auth/extension/refresh`.
 
 ### Modifié
-- API : la connexion à PostgreSQL échoue au bout de 10 s au lieu d'attendre indéfiniment.
-
-### Modifié
+- Extension : les réglages ne demandent plus que des **domaines** (API Radar Immo, application web, serveur d'authentification). Les chemins sont fixes : `/connexion-extension` et `/api/auth/extension/refresh`. Variables de build : `RADAR_API_URL`, `RADAR_APP_URL`, `RADAR_AUTH_URL` (`RADAR_LOGIN_URL` disparaît). Un ancien réglage d'URL complète est repris pour son domaine.
 - API : journaux détaillés de l'authentification déléguée (configuration au démarrage, statut, durée, redirection et extrait de réponse du backend d'authentification ; jamais le jeton).
 - API : une route de vérification introuvable (404, 405) ou une redirection renvoie désormais `503 auth_unavailable` (mauvaise configuration) au lieu de `401 invalid_token`.
+- API : la connexion à PostgreSQL échoue au bout de 10 s au lieu d'attendre indéfiniment.
 - Extension : un jeton collé avec son préfixe `Bearer ` est accepté.
+- Extension : un refus 403 de l'API n'est plus traité comme une session expirée.
 
 ## [1.2.0] - 2026-09-28
 

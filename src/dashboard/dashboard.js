@@ -427,19 +427,38 @@ async function renderAccount() {
   $('#acLogin').textContent = c.status === 'expired' ? 'Se reconnecter' : 'Se connecter';
   $('#acSync').hidden = !on; $('#acLogout').hidden = !on;
   if (document.activeElement !== $('#acApi')) $('#acApi').value = c.apiUrl || '';
-  if (document.activeElement !== $('#acLoginUrl')) $('#acLoginUrl').value = c.loginUrl || '';
-  $('#acApi').placeholder = C.DEFAULT_API_URL || 'https://api.exemple.fr';
-  $('#acLoginUrl').placeholder = C.DEFAULT_LOGIN_URL || 'https://app.exemple.fr/connexion-extension';
+  if (document.activeElement !== $('#acAppUrl')) $('#acAppUrl').value = c.appUrl || C.appUrlOf({ loginUrl: c.loginUrl }) || '';
+  if (document.activeElement !== $('#acAuthUrl')) $('#acAuthUrl').value = c.authUrl || C.authUrlOf({ refreshUrl: c.refreshUrl }) || '';
+  $('#acAppUrl').placeholder = C.DEFAULT_APP_URL || 'https://exemple.fr';
+  $('#acAuthUrl').placeholder = C.DEFAULT_AUTH_URL || 'https://api.exemple.fr';
+  $('#acAppHint').textContent = 'Connexion : ' + (C.loginUrlOf(c) || '…' + C.LOGIN_PATH);
+  $('#acAuthHint').textContent = 'Renouvellement du jeton : ' + (C.refreshUrlOf(c) || '…' + C.REFRESH_PATH);
+  $('#sessionBanner').hidden = !(c.status === 'expired' && !c.token);
+  $('#acApi').placeholder = C.DEFAULT_API_URL || 'https://radar-api.exemple.fr';
 }
 const requestSync = async () => {
   const r = await ext.runtime.sendMessage({ type: 'cloudSync' });
   if (r && !r.ok) throw new Error(r.error);
 };
 $('#acApi').onchange = async (e) => { await C.setState({ apiUrl: e.target.value.trim() }); renderAccount(); };
-$('#acLoginUrl').onchange = async (e) => { await C.setState({ loginUrl: e.target.value.trim() }); renderAccount(); };
-$('#acLogin').onclick = async () => {
-  try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) { alert(e.message + ' — renseigne-la dans « Réglages avancés ».'); }
+// Domaines seulement : on retire un éventuel chemin, et les anciens réglages (URL complètes) sont remplacés.
+const setOrigin = (key, legacy) => async (e) => {
+  const v = e.target.value.trim(), o = C.appUrlOf({ appUrl: v });
+  if (v && !o) { alert('Adresse invalide : saisis un domaine comme https://exemple.fr'); return; }
+  await C.setState({ [key]: o, [legacy]: '' }); renderAccount();
 };
+$('#acAppUrl').onchange = setOrigin('appUrl', 'loginUrl');
+$('#acAuthUrl').onchange = setOrigin('authUrl', 'refreshUrl');
+async function login() {
+  try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) {
+    // Pas d'application web configurée : on amène sur le champ « colle un jeton ».
+    location.hash = 'donnees';
+    const d = $('#account details'); if (d) d.open = true;
+    $('#acToken').focus();
+  }
+}
+$('#acLogin').onclick = login;
+$('#bannerLogin').onclick = login;
 $('#acTokenForm').onsubmit = async (e) => {
   e.preventDefault();
   try {
