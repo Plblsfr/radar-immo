@@ -10,9 +10,9 @@
   // Seuls les domaines sont configurables : les chemins sont fixes.
   const DEFAULT_API_URL = '';   // API Radar Immo, ex. https://radar-api.plbls.fr
   const DEFAULT_APP_URL = '';   // application web, ex. https://plbls.fr
-  const DEFAULT_AUTH_URL = '';  // backend d'authentification, ex. https://api.plbls.fr
+  const DEFAULT_AUTH_URL = '';  // backend d'authentification (externe) : domaine, ou URL complète de la route de renouvellement
   const LOGIN_PATH = '/connexion-extension';
-  const REFRESH_PATH = '/api/auth/extension/refresh';
+  const REFRESH_PATH = '/auth/extension/refresh'; // par défaut, si seul le domaine est donné
   const REFRESH_MARGIN = 60 * 1000; // renouvelle le jeton une minute avant son expiration
 
   const KEY = 'cloud';
@@ -43,8 +43,17 @@
   // loginUrl / refreshUrl : anciens réglages (URL complètes), repris pour leur domaine.
   const appUrlOf = (s) => originOf(s.appUrl || s.loginUrl || DEFAULT_APP_URL);
   const authUrlOf = (s) => originOf(s.authUrl || s.refreshUrl || DEFAULT_AUTH_URL);
+  /** Route de renouvellement : le backend d'authentification est externe à Radar Immo, son chemin est donc
+   *  configurable. Domaine seul → chemin par défaut (REFRESH_PATH) ; URL avec chemin → utilisée telle quelle. */
+  function refreshUrlOf(s) {
+    const raw = String(s.authUrl || s.refreshUrl || DEFAULT_AUTH_URL || '').trim();
+    let u;
+    try { u = new URL(raw); } catch (e) { return ''; }
+    if (!/^https?:$/.test(u.protocol)) return '';
+    const path = u.pathname.replace(/\/+$/, '');
+    return u.origin + (path || REFRESH_PATH) + u.search;
+  }
   const loginUrlOf = (s) => { const o = appUrlOf(s); return o ? o + LOGIN_PATH : ''; };
-  const refreshUrlOf = (s) => { const o = authUrlOf(s); return o ? o + REFRESH_PATH : ''; };
 
   // ───────────────────────── Appels HTTP
   async function request(apiUrl, token, path, { method = 'GET', body } = {}) {

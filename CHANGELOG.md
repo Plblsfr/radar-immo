@@ -6,6 +6,12 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+### Modifié
+- Extension : la route de renouvellement du jeton est **configurable**, car elle appartient au backend d'authentification, externe à Radar Immo. Le champ *Renouvellement du jeton* (et `RADAR_AUTH_URL` au build) accepte un domaine, qui donne le chemin par défaut `/auth/extension/refresh`, ou une URL complète. L'adresse réellement appelée s'affiche sous le champ.
+
+### Corrigé
+- Extension : le chemin par défaut de la route de renouvellement est `/auth/extension/refresh`, sans `/api`.
+
 ## [1.3.0] - 2026-09-29
 
 ### Ajouté

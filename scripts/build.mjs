@@ -9,9 +9,9 @@
  *   RADAR_API_URL   domaine de l'API Radar Immo, ex. https://radar-api.plbls.fr
  *   RADAR_APP_URL   domaine de l'application web, ex. https://plbls.fr : connexion sur <domaine>/connexion-extension
  *                   (restreint aussi la page de retour de connexion à ce domaine)
- *   RADAR_AUTH_URL  domaine du backend d'authentification, ex. https://api.plbls.fr :
- *                   renouvellement du jeton sur <domaine>/api/auth/extension/refresh
- * Seuls les domaines se configurent : les chemins sont fixés dans lib/cloud.js.
+ *   RADAR_AUTH_URL  backend d'authentification (externe) : domaine, ex. https://api.plbls.fr, renouvellement du jeton
+ *                   sur <domaine>/auth/extension/refresh ; ou URL complète si la route a un autre chemin.
+ * RADAR_API_URL et RADAR_APP_URL : domaine seulement, les chemins sont fixés dans lib/cloud.js.
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -90,7 +90,13 @@ const originOnly = (name) => {
   if (!v) return '';
   try { return new URL(v).origin; } catch { console.error(`✗ ${name} invalide : ${v}`); process.exit(1); }
 };
-const service = { api: originOnly('RADAR_API_URL'), app: originOnly('RADAR_APP_URL'), auth: originOnly('RADAR_AUTH_URL') };
+// Le backend d'authentification est externe : son URL peut inclure le chemin de la route de renouvellement.
+const fullUrl = (name) => {
+  const v = process.env[name] || '';
+  if (!v) return '';
+  try { const u = new URL(v); return u.origin + u.pathname.replace(/\/+$/, '') + u.search; } catch { console.error(`✗ ${name} invalide : ${v}`); process.exit(1); }
+};
+const service = { api: originOnly('RADAR_API_URL'), app: originOnly('RADAR_APP_URL'), auth: fullUrl('RADAR_AUTH_URL') };
 for (const [k, v] of Object.entries(service)) {
   if (v && !/^https:\/\/[^\s'"]+$/.test(v) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/[^\s'"]*)?$/.test(v)) {
     console.error(`✗ URL invalide pour ${k} : ${v} (https:// obligatoire, sauf localhost)`);
