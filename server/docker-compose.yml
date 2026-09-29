@@ -21,7 +21,7 @@ services:
       # Route GET du backend principal qui valide le jeton : 2xx valide, 4xx refusé, 5xx indisponible.
       # Elle doit renvoyer l'identifiant de l'utilisateur (voir AUTH_USER_ID_PATHS) ou le jeton doit
       # être un JWT avec « sub ». Pour passer par le réseau Docker interne plutôt que par le nom
-      # d'hôte public, pointer sur le conteneur du backend (ex. http://backend:8080/…).
+      # d'hôte public, pointer sur le conteneur du backend (ex. http://backend:8080/auth/verify).
       AUTH_VERIFY_URL: ${AUTH_VERIFY_URL:?AUTH_VERIFY_URL requis, voir .env.example}
       AUTH_HEADER_NAME: ${AUTH_HEADER_NAME:-Authorization}
       # Préfixe avant le jeton ; vide pour le jeton brut. Un espace est ajouté si absent.

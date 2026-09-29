@@ -30,7 +30,7 @@ function fakeServer() {
   globalThis.fetch = async (url, opt) => {
     const json = (status, data) => ({ ok: status < 300, status, json: async () => data });
     const body = opt.body ? JSON.parse(opt.body) : null;
-    if (url === 'https://auth.test/api/auth/extension/refresh') {
+    if (url === 'https://auth.test/auth/extension/refresh') {
       auth.refreshCalls++;
       if (auth.refreshStatus !== 200 || body.refreshToken !== auth.refresh) return json(auth.refreshStatus === 200 ? 401 : auth.refreshStatus, {});
       auth.valid = 'tok-' + auth.refreshCalls; auth.refresh = 'rt-' + (auth.refreshCalls + 1);
@@ -202,9 +202,13 @@ describe('sync', () => {
     assert.equal((await C.getState()).status, 'ok');
   });
 
-  test('seuls les domaines se configurent, les chemins sont fixes', () => {
+  test('URL de connexion (chemin fixe) et de renouvellement (chemin configurable)', () => {
     assert.equal(C.loginUrlOf({ appUrl: 'https://plbls.fr/' }), 'https://plbls.fr/connexion-extension');
-    assert.equal(C.refreshUrlOf({ authUrl: 'https://api.plbls.fr/autre/chemin' }), 'https://api.plbls.fr/api/auth/extension/refresh');
+    assert.equal(C.loginUrlOf({ appUrl: 'https://plbls.fr/autre' }), 'https://plbls.fr/connexion-extension', 'chemin de connexion fixe');
+    assert.equal(C.refreshUrlOf({ authUrl: 'https://api.plbls.fr' }), 'https://api.plbls.fr/auth/extension/refresh', 'domaine seul : chemin par défaut');
+    assert.equal(C.refreshUrlOf({ authUrl: 'https://api.plbls.fr/' }), 'https://api.plbls.fr/auth/extension/refresh');
+    assert.equal(C.refreshUrlOf({ authUrl: 'https://auth.plbls.fr/v2/token/refresh/' }), 'https://auth.plbls.fr/v2/token/refresh', 'chemin personnalisé respecté');
+    assert.equal(C.refreshUrlOf({ authUrl: 'ftp://x' }), '');
     assert.equal(C.loginUrlOf({ loginUrl: 'https://plbls.fr/connexion-extension' }), 'https://plbls.fr/connexion-extension', 'ancien réglage repris');
     assert.equal(C.refreshUrlOf({ authUrl: 'pas une url' }), '');
     assert.equal(C.loginUrlOf({}), '');

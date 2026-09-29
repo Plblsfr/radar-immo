@@ -428,11 +428,11 @@ async function renderAccount() {
   $('#acSync').hidden = !on; $('#acLogout').hidden = !on;
   if (document.activeElement !== $('#acApi')) $('#acApi').value = c.apiUrl || '';
   if (document.activeElement !== $('#acAppUrl')) $('#acAppUrl').value = c.appUrl || C.appUrlOf({ loginUrl: c.loginUrl }) || '';
-  if (document.activeElement !== $('#acAuthUrl')) $('#acAuthUrl').value = c.authUrl || C.authUrlOf({ refreshUrl: c.refreshUrl }) || '';
+  if (document.activeElement !== $('#acAuthUrl')) $('#acAuthUrl').value = c.authUrl || c.refreshUrl || '';
   $('#acAppUrl').placeholder = C.DEFAULT_APP_URL || 'https://exemple.fr';
   $('#acAuthUrl').placeholder = C.DEFAULT_AUTH_URL || 'https://api.exemple.fr';
   $('#acAppHint').textContent = 'Connexion : ' + (C.loginUrlOf(c) || '…' + C.LOGIN_PATH);
-  $('#acAuthHint').textContent = 'Renouvellement du jeton : ' + (C.refreshUrlOf(c) || '…' + C.REFRESH_PATH);
+  $('#acAuthHint').textContent = 'Appelé : ' + (C.refreshUrlOf(c) || '…' + C.REFRESH_PATH) + '. Domaine seul : chemin ' + C.REFRESH_PATH + ' par défaut.';
   $('#sessionBanner').hidden = !(c.status === 'expired' && !c.token);
   $('#acApi').placeholder = C.DEFAULT_API_URL || 'https://radar-api.exemple.fr';
 }
@@ -448,7 +448,12 @@ const setOrigin = (key, legacy) => async (e) => {
   await C.setState({ [key]: o, [legacy]: '' }); renderAccount();
 };
 $('#acAppUrl').onchange = setOrigin('appUrl', 'loginUrl');
-$('#acAuthUrl').onchange = setOrigin('authUrl', 'refreshUrl');
+// Backend d'authentification externe : domaine (chemin par défaut) ou URL complète de la route de renouvellement.
+$('#acAuthUrl').onchange = async (e) => {
+  const v = e.target.value.trim().replace(/\/+$/, '');
+  if (v && !C.refreshUrlOf({ authUrl: v })) { alert('Adresse invalide : saisis un domaine (https://api.exemple.fr) ou l\'URL complète de la route de renouvellement'); return; }
+  await C.setState({ authUrl: v, refreshUrl: '' }); renderAccount();
+};
 async function login() {
   try { ext.tabs.create({ url: await C.startLogin() }); } catch (e) {
     // Pas d'application web configurée : on amène sur le champ « colle un jeton ».
