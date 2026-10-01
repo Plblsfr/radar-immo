@@ -6,6 +6,9 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et le pr
 
 ## [Non publié]
 
+### Modifié
+- Manifest : description raccourcie à 108 caractères (limite du Chrome Web Store : 132) et sans noms de sites d'annonces, que le Store considère comme du « keyword spam ».
+
 ## [1.3.1] - 2026-09-29
 
 ### Modifié
