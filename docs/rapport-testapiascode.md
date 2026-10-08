@@ -1,129 +1,106 @@
 # Rapport d'essai TestApiAsCode : recréer le backend Radar Immo
 
-Date : 2026-10-08. Compte de test : `ClaudeAssistant` (rôles viewer, author, publisher, rule-maintainer).
+Compte de test : `ClaudeAssistant` (viewer, author, publisher, rule-maintainer). Tables : `server/sql/schema.sql` (schéma `radar_immo`).
 
-**Objectif :** recréer le backend existant (`server/src/app.js` + `store.js`, Fastify + PostgreSQL) sous forme de routes TestApiAsCode, sur les tables de `server/sql/schema.sql` (schéma `radar_immo` : `users`, `settings`, `listings`, `shares`, séquence `change_seq`).
+**Objectif :** recréer le backend existant (`server/src/app.js` + `store.js`, Fastify + PostgreSQL) sous forme de routes TestApiAsCode.
 
-**Méthode :** `get_v1_format_schema`, `post_v1_format_validate`, brouillons + `post_v1_drafts_by_id_test` (simulation annulée). Les capacités de `ctx.db` ont été sondées par des étapes `code` qui capturent chaque erreur. Rien n'a été publié.
+Deux passes ont eu lieu le 2026-10-08 :
+1. **Passe 1** (version initiale de l'outil) : 7 blocages, détaillés en annexe.
+2. **Passe 2** (après évolution de l'outil) : presque tous les blocages sont levés, 14 routes sont écrites et testées en brouillon. Rien n'est publié.
 
-## Verdict
+## Verdict de la passe 2
 
-L'outil fonctionne bien pour du CRUD simple sur une table (validation, trace, tests contre la vraie base, rejeu des exemples). Le backend actuel repose sur des mécanismes qu'il ne sait pas exprimer : **un numéro de version issu d'une séquence, l'upsert conditionnel, la fusion JSON en base, la pagination et les verrous**. Sans ceux-ci, `/v1/sync`, `/v1/settings` et `/v1/listings` ne peuvent pas être reproduits de façon fiable. Seules les routes de lecture simple, ainsi que `/v1/me` et `/health`, le sont.
+Le backend peut être reproduit, avec quelques écarts de contrat et une limite de concurrence. Toutes les routes que l'extension appelle réellement (`/v1/me`, `/v1/sync`, `/v1/shares` ×3, `/v1/data`) sont faites et leurs tests de simulation passent.
 
-## Bloquants (ce qui empêche de faire les routes)
+## Routes écrites (brouillons, tous testés avec succès)
 
-### B1. Pas de valeur générée par le serveur (séquence)
-`listings.version` et `settings.version` sont `NOT NULL` sans défaut et alimentés par `nextval('radar_immo.change_seq')`. Cette valeur est le curseur de la synchronisation incrémentale.
-- Avec `target` + `map`, la colonne doit venir du client (`missing_required_column` sinon), et `map` rejette `nextval(...)` (`Champ d'entrée inconnu : « nextval »`).
-- Avec `ctx.db.insert`, passer `"nextval('radar_immo.change_seq')"` en chaîne ou en objet `{ raw: ... }` donne `db_error` (la chaîne est traitée comme une valeur).
-- Contournement possible : lire le max (`select(..., { orderBy: '-version', limit: 1 })`) puis ajouter 1. Ce n'est pas sûr en concurrence (B3), et le compteur n'est plus global.
-- **Demande :** exprimer une valeur serveur (`nextval`, `now()`, `{ $sql }` ou équivalent) dans `map` et dans `ctx.db.insert/update`.
+| Brouillon | Route | Technique | Ce qui est vérifié en simulation |
+|---|---|---|---|
+| 17 | `GET /health` | `respond` seul | réponse |
+| 4 | `GET /v1/me` | `respond` + `$user.id` | réponse |
+| 5 | `GET /v1/settings` | étape `code` | cas « aucun critère » (null) |
+| 3 | `PUT /v1/settings` | `target` + `upsert` + `$nextval` + `code` (dernière écriture gagne) | insertion complète, avec utilisateur créé |
+| 6 | `GET /v1/listings` | `target` + `scope` + `list` (tri, offset, total) | liste vide |
+| 7 | `GET /v1/listings/{id}` | `target` + `scope` | 404 |
+| 10 | `PATCH /v1/listings/{id}` | `code` + `$merge` + `$nextval` | 404, aucun champ, enum invalide |
+| 8 | `DELETE /v1/listings/{id}` | `code` (tombe + version) | 404 |
+| 9 | `POST /v1/sync` | `code` + `upsert` + `$nextval` | première synchro (2 annonces + critères), synchro vide, 400 |
+| 11 | `POST /v1/shares` | `code` + `randomToken` | 404, validation (365 jours max) |
+| 12 | `GET /v1/shares` | `code` | liste vide |
+| 13 | `DELETE /v1/shares/{token}` | `code` | 404 |
+| 14 | `DELETE /v1/data` | `code` (mise à jour en masse avec `$nextval` par ligne) | compte vide, 204 |
+| 15 | `GET /v1/export` | `code` (pagination par `offset`) | compte vide |
+| 16 | `GET /public/shares/{token}` | `code`, `access: public` | jeton invalide / inconnu |
 
-### B2. Pas d'upsert, et les erreurs SQL sont opaques
-- Aucun `ON CONFLICT … DO UPDATE … WHERE`. La règle « la dernière écriture gagne » (`WHERE updated_at < EXCLUDED.updated_at`) n'est pas exprimable en une instruction.
-- Toute erreur SQL (doublon de clé, clé étrangère, NOT NULL, colonne inconnue, colonne générée) remonte sous la même forme : message « Erreur de la base », `{ code: 'db_error' }`. Impossible de distinguer un doublon d'une clé étrangère pour répondre 409 ou autre.
-- Hors étapes `code`, `target` convertit la clé étrangère en `409 reference_not_found`. Dans un `code`, cette information est perdue.
-- **Demande :** option `onConflict` / `upsert`, et des erreurs typées (`unique_violation`, `foreign_key_violation`, `not_null_violation`) avec la colonne concernée.
+Les chemins heureux qui exigent des lignes existantes (PATCH, DELETE, création de lien, vue publique) ont été vérifiés **par une route-sonde** qui amorce des données puis exécute les mêmes appels `ctx.db` (voir P1). Elle a confirmé : `$merge` (fusion JSON superficielle, comme `data || patch`), `$increment`, `$now` (`epoch_ms`, `timestamp`), `$nextval` (une valeur distincte par ligne sur 130 lignes), mise à jour des colonnes générées `saved`/`status`, `randomToken(16)` (22 caractères, base64url, 128 bits), filtres `isNull`/`gt`/`lte`, `offset`, `limit` jusqu'à 1000.
 
-### B3. Une erreur SQL attrapée empoisonne toute la transaction
-Après un `try/catch` autour d'un `ctx.db.insert` en doublon, **toutes les requêtes suivantes** de la même exécution échouent avec « Erreur de la base » (transaction PostgreSQL « aborted », sans savepoint). Le code utilisateur ne peut donc pas gérer l'erreur et continuer.
-- Plus généralement : pas de contrôle de transaction (`transaction`, savepoint) ni de verrou consultatif (`pg_advisory_xact_lock`). Le backend actuel sérialise les écritures d'un utilisateur par verrou pour garantir l'ordre des versions. Reproduire cela en `select` puis `insert/update` expose à des conditions de concurrence.
-- **Demande :** un savepoint implicite par appel `ctx.db.*`, ou une API `ctx.db.transaction`, ou un verrou par clé.
+## Ce qui est résolu depuis la passe 1
 
-### B4. Mises à jour par expression impossibles
-`ctx.db.update(table, where, values)` n'accepte que des valeurs littérales.
-- `data = data || $patch` (fusion JSONB du `PATCH /v1/listings/{id}`) : un `update` avec `data` **remplace** le JSON entier (testé : `{x:1}` a écrasé l'ancien contenu). Il faut lire, fusionner en JS, réécrire, avec le risque de concurrence.
-- `updated_at = GREATEST($now, updated_at + 1)`, `views = views + 1`, `version = nextval(...)` : non exprimables.
-- `update` et `delete` renvoient seulement un nombre de lignes (pas de `RETURNING`) ; pas non plus de `max()` ni de `JOIN` (utilisé par `viewShare` et `sync`).
-- **Demande :** expressions dans `update` (`{ inc: 1 }`, `{ $merge: {...} }`, ou SQL paramétré), ou un `ctx.db.sql` en lecture/écriture paramétré.
-
-### B5. Pagination et tri incomplets, avec des options ignorées en silence
-Testé sur `ctx.db.select(table, where, options)` :
-| Option | Résultat |
+| Blocage de la passe 1 | État |
 |---|---|
-| `limit` | fonctionne |
-| `offset`, `skip` | **ignorés sans erreur** (le résultat est inchangé) |
-| `orderBy: 'col'` | fonctionne (ascendant) |
-| `orderBy: '-col'` | fonctionne en décroissant (**non documenté**, découvert par essai) |
-| `direction`, `dir`, `order`, `desc`, `sort`, `fields`… | **ignorés sans erreur** |
-| `orderBy: [..]`, objet, `'a,b'` | erreur `Colonne invalide` |
-| `columns: ['id','version']` | fonctionne |
-| clé JSON (`'data->>status'`) | `Colonne invalide` |
+| B1 séquence / valeur serveur | résolu : `{ $nextval: schéma.séquence }` dans `map`, `softDelete` et `ctx.db` ; `GET /v1/data/sequences` |
+| B2 upsert | résolu : `upsert: true` et `ctx.db.upsert(table, valeurs, clés, colonnesÀMettreÀJour)` |
+| B4 expressions de mise à jour | résolu : `$increment`, `$now`, `$merge` |
+| B5 pagination et tri | résolu : `offset`, `list` avec tri et total, `orderBy` |
+| B6 authentification | documentée : `AUTH_VERIFY_URL` / JWT / clé d'API (configuration du serveur de l'outil, non testable depuis l'API de gestion) |
+| B7 réponse 204 | résolu : `respond: { status: 204 }` sans corps |
+| Jetons aléatoires | résolu : `ctx.randomToken()` et `crypto.getRandomValues` |
+| Documentation | améliorée : `get_v1_format_schema` contient un guide (types, expressions, `ctx`) |
 
-Conséquences : `GET /v1/listings` (`limit`, `offset`, tri `updated_at DESC, id`, total) ne peut pas être reproduit. Une option inconnue silencieusement ignorée est dangereuse : le code semble marcher et renvoie un mauvais résultat.
-Filtres disponibles : `eq, ne, gt, gte, lt, lte, in, like, isNull` (liste donnée par l'erreur « Opérateur inconnu »), pas de `or`/`not`.
-- **Demande :** `offset`, tri multi-colonnes avec direction explicite, rejet des options inconnues, `or`.
+## Problèmes restants (à transmettre au développeur)
 
-### B6. Authentification : pas de moyen de vérifier un jeton externe
-Le backend valide chaque requête en appelant `AUTH_VERIFY_URL` avec le jeton du client, puis lit l'identifiant utilisateur dans la réponse.
-- Le bac à sable `code` n'a **ni `fetch`, ni `process`, ni `setTimeout`, ni `URL`, ni import dynamique** (`Not supported`). Aucun appel réseau n'est possible.
-- `access` ne propose que `public`, `authenticated` ou une liste de rôles ; rien n'indique comment `authenticated` est défini ni comment `user.id` est alimenté à partir d'un jeton tiers.
-- **Demande :** documenter le mécanisme d'authentification de l'outil et le raccorder à un fournisseur externe (URL de vérification, ou JWT/JWKS).
+### P1. Les exemples ne peuvent pas amorcer de données (gênant)
+Un exemple de route ne contient que `request` et `response`. Les chemins heureux qui supposent des lignes existantes (PATCH, DELETE, lien de partage, vue publique, liste filtrée, conflit « dernière écriture gagne ») ne sont donc pas testables par `post_v1_drafts_by_id_test`. J'ai contourné avec une route-sonde jetable, ce qui n'est pas satisfaisant.
+**Demande :** un champ `given` / `fixtures` dans les exemples (lignes à insérer avant la requête, dans la transaction annulée).
 
-### B7. Réponse 204 impossible sur une route sans `target`
-Une route sans `target` doit définir `respond.body` (`missing_body`), mais un corps avec statut 204 est refusé (`body_with_204`, y compris `body: null`). Les routes `DELETE /v1/listings/{id}`, `DELETE /v1/shares/{token}` et `DELETE /v1/data` du backend actuel répondent 204.
-- **Demande :** autoriser `respond: { status: 204 }` sans corps.
+### P2. Pas de verrou ni de condition atomique : concurrence
+Le backend d'origine sérialise les écritures d'un utilisateur par verrou consultatif et applique la règle « dernière écriture gagne » dans un seul `INSERT … ON CONFLICT … WHERE updated_at < EXCLUDED.updated_at`. Ici :
+- `upsert` n'accepte pas de condition `WHERE` ;
+- les routes `PUT /v1/settings`, `POST /v1/sync`, `PATCH`, `DELETE` font **lecture, comparaison, écriture** dans la transaction de la route (niveau READ COMMITTED), donc deux synchronisations simultanées du même utilisateur peuvent s'entrelacer ;
+- il n'y a pas d'API de verrou (`pg_advisory_xact_lock`).
+**Demande :** `upsert` avec condition de mise à jour (`whereUpdate: updated_at < $new`), ou un verrou par clé (`ctx.db.lock(clé)`).
 
-## Contraintes qui forcent à changer le contrat de l'API
+### P3. Une ligne absente avec `target` donne un 404 avant `respond`
+`GET /v1/settings` avec `target` + `scope` renvoie un 404 si la ligne n'existe pas, sans passer par `respond`. Le contrat d'origine est `200 { data: null, updatedAt: null }`. J'ai dû passer par une étape `code` sans `target`.
+**Demande :** option pour traiter l'absence comme `$row = null` au lieu d'un 404.
 
-### C1. Clé de chemin obligatoire avec `target`
-- `PUT /v1/settings` : refusé (`missing_identifier`, un PUT désigne une ligne et exige un paramètre de chemin qui en est la clé).
-- `GET`/`DELETE /v1/listings/{id}` avec `target` : refusé (`not_unique`). Les paramètres de chemin doivent former toute la clé primaire `(user_id, id)`.
-- La seule forme acceptée est `GET /v1/listings/{userId}/{id}` : l'identifiant utilisateur passerait dans l'URL, donc risque d'accès aux données d'un autre utilisateur si le contrôle n'est pas refait à la main.
-- Contournement qui valide : route **sans `target`**, `ctx.db.select(..., { user_id: ctx.user.id, id: ctx.params.id })` dans un `code`, et `ctx.reject(404, ...)`. Cela marche, mais perd les avantages du mode déclaratif.
-- **Demande :** pouvoir filtrer automatiquement sur la colonne propriétaire (`owner: user_id`) pour qu'une route par id n'expose que les lignes de l'utilisateur authentifié.
+### P4. Format des erreurs différent du backend d'origine
+L'outil renvoie du RFC 9457 (`type`, `title`, `status`, `code`). Le backend d'origine renvoie `{ error, message }`, et le client (`src/lib/cloud.js:73`) lit `data.error` et `data.message`. Le client se base sur le statut HTTP, donc rien ne casse, mais les messages utiles en français deviennent « Erreur 404 ». De même, le 409 de conflit d'origine renvoie `current` (la version gagnante) ; ici `ctx.reject` n'accepte que statut, code et message.
+**Demande :** gabarit d'erreur configurable, ou `ctx.reject` avec un corps additionnel.
 
-### C2. Une route `POST` avec `target` insère les colonnes que le client fournit
-Sans `map`, `user_id` et `version` doivent figurer dans le corps de la requête. `$user.id` est accepté dans `map` (la validation passe), mais ce n'est écrit nulle part dans le schéma de format ; je l'ai trouvé par essai.
+### P5. Écarts de contrat sur les listes déclaratives
+`GET /v1/listings` (déclaratif) renvoie `{ items, nextCursor, nextOffset, total }` avec des **lignes de table** (`userId`, `data`, `deleted`, `updatedAt`, `version`…) alors que l'original renvoie des annonces à plat (`{ ...data, id, updatedAt }`). L'extension n'appelle pas cette route (elle passe par `/v1/sync`), mais un autre client serait affecté. Remodeler demande une étape `code`.
 
-## Incohérences et manques de documentation
+### P6. Typage : facultatif ne veut pas dire nullable
+`integer?` accepte l'absence mais pas `null` (erreur `response_contract_violation` en sortie et `Champ obligatoire manquant` en entrée). Il faut la forme longue `{ $type: json?, nullable: true }`, présentée comme deux mécanismes distincts. L'extension envoie `settings: null` explicitement. À mieux documenter ou à simplifier.
 
-1. **Schéma de format contre validateur :** `get_v1_format_schema` impose `target` en `^[a-z_][a-z0-9_]*$` (sans point), alors que le validateur **exige** le nom qualifié `schema.table` pour tout schéma autre que `public` (sinon `La table « settings » n'existe pas dans le schéma « public »`). Le schéma publié contredit l'usage réel.
-2. **Mini-langage de types non documenté :** `object` et `any` sont refusés (`unknown_type`). Le bon type, `json`, n'est connu que grâce à la suggestion d'une erreur sur `jsonb`. Aucune liste des types dans `get_v1_format_schema`.
-3. **Noms de champs :** `input` impose du camelCase (`updated_at` refusé), alors que les colonnes sont en snake_case. `map` fait le lien, mais les erreurs ne l'expliquent pas.
-4. **Syntaxe des expressions :** `map` (`$user.id`, noms de champs sans préfixe `input.`) et `respond.headers` (une chaîne doit être écrite `"'text/html'"` : `text/html` est lu comme une expression et donne `unknown_field`) ne sont documentés nulle part.
-5. **`get_v1_data_tables`** liste bien les 4 tables et les colonnes générées (`writable: false`) mais **pas la séquence** `change_seq`, donc aucun moyen de la référencer.
-6. **Avertissement trompeur :** `unused_field` est affiché pour un champ d'entrée lu uniquement dans une étape `code` (`input.scenario`, `input.since`).
-7. **`ctx` :** `ctx.params`, `ctx.record` et `ctx.vars` sont des objets vides dans mes tests. La doc ne dit pas quand ils sont remplis.
-8. **`get_v1_data_tables` après création des tables :** il a fallu deux appels à `post_v1_data_schema_refresh` pour voir `radar_immo` (le premier est revenu `changed: false` avec le schéma encore vide).
+### P7. Ordre d'évaluation de `map`
+`map` est évalué **avant** les étapes : `$pre.at` donne `Variable inconnue à cet endroit : $pre`. Le guide dit que `$<nom>` est disponible « dans steps et respond » mais ne précise pas que `map` en est exclu. Contournement : `patch` ou expression JSONata (`updatedAt ? updatedAt : $millis()`).
 
-## Ce qui fonctionne
+### P8. Divers
+- `post_v1_drafts` accepte une source YAML invalide (ici un `: ` non quoté dans une expression) sans rien dire ; l'erreur n'apparaît qu'au test. Cela suit la consigne « le texte peut être incomplet », mais un avertissement serait utile.
+- Les simulations consomment des valeurs de séquence (`version` avance à chaque test, même annulé). Normal pour PostgreSQL, à connaître.
+- `$row` expose les colonnes en camelCase (`updatedAt`), `ctx.db` en snake_case (`updated_at`). Cohérent avec `NAMING=camel`, mais piégeux dans un même fichier.
+- L'URL de partage (`https://radar-api.plbls.fr/s/…`) est écrite en dur dans le code ; l'original lit `SHARE_URL_PREFIX`. Une variable de configuration accessible depuis `ctx` serait utile.
+- Un `GET` de collection déclaratif ne permet pas de filtrer sur plusieurs valeurs d'enum ni de combiner `OR` ; non nécessaire ici.
 
-- Découverte des tables, clés primaires et uniques, colonnes, défauts, colonnes générées.
-- `format_validate` : erreurs avec ligne, colonne, chemin et suggestion.
-- Brouillons, validation, test en simulation (transaction annulée) avec trace par étape, exemples rejoués.
-- Étapes `code` : `export default async function (input, ctx)`, `ctx.user` (`id`, `roles`), `ctx.params`, `ctx.db` (`select`, `count`, `insert`, `update`, `delete`), `ctx.rule`, `ctx.log`, `ctx.reject(status, code, message)`, `Date.now()`.
-- Droits base déclarés par étape (`db.read` / `db.write`) et vérifiés (`La table … n'est pas accordée en lecture à cette étape`).
-- Garde-fous : `update` et `delete` sans `where` refusés (`invalid_db_call`).
-- Clés étrangères transformées en `409 reference_not_found` pour les routes avec `target`.
-- Routes sans `target` avec `respond.body` calculé, statuts et en-têtes personnalisés (par exemple `content-type`).
+## Pas encore fait
 
-## Couverture du backend actuel
+- `GET /s/{token}` (page HTML publique de partage, ~100 lignes de gabarit dans `server/src/share.js`). Techniquement possible : `respond.headers: { content-type: "'text/html'" }` et un corps calculé par une étape `code`. Non reproduit.
+- `GET /health/ready` (ping base de données).
+- Authentification réelle : l'API de gestion ne permet pas de tester `AUTH_VERIFY_URL` ; les tests injectent `user`. À valider après publication avec un vrai jeton.
+- Publication : demande d'approbation humaine requise (`post_v1_drafts_by_id_publish`). Rien n'a été publié.
+- Parité des chemins avec les données : vérifier après publication que `POST /v1/sync` donne le même résultat que l'API d'origine sur un jeu de test.
 
-| Route actuelle | Faisable ? | Remarque |
-|---|---|---|
-| `GET /health`, `GET /v1/me` | Oui | trivial |
-| `GET /v1/export` | Oui, en `code` | sans pagination |
-| `GET /v1/listings/{id}` | Oui, en `code` | pas en déclaratif (C1) |
-| `GET /v1/listings` (filtre, tri, `offset`, total) | Non | B5 |
-| `DELETE /v1/listings/{id}` (suppression logique avec version) | Non | B1, B4, B7 |
-| `PATCH /v1/listings/{id}` (fusion JSON) | Non fiable | B1, B4 |
-| `PUT /v1/settings`, `GET /v1/settings` | Non pour `PUT` | B1, B2, C1 |
-| `POST /v1/sync` | Non | B1, B2, B3, B4, B5 |
-| `POST/GET/DELETE /v1/shares` | Partiel | pas de `crypto` pour les jetons (B6), 204 (B7) |
-| `GET /public/shares/{token}`, `GET /s/{token}` | Partiel | mise à jour atomique `views = views + 1` (B4) |
-| `DELETE /v1/data` | Non | B4, B7 |
-| Authentification par `AUTH_VERIFY_URL` | Non | B6 |
+---
 
-## Générateur de jetons : pas de source aléatoire
+## Annexe : blocages de la passe 1 (avant évolution de l'outil)
 
-Les liens de partage utilisent un secret de 128 bits (`newShareToken` dans `server/src/share.js`). Le bac à sable n'a pas de `crypto`, donc seul `Math.random()` serait disponible, ce qui ne convient pas pour un secret. Alternative côté base : `DEFAULT encode(gen_random_bytes(16), 'base64')` sur `shares.token` (pgcrypto), ce qui évite l'appel en code mais impose de changer le schéma.
-
-## Contournements côté base de données (si l'outil ne change pas)
-
-- Un trigger `BEFORE INSERT OR UPDATE` sur `listings` et `settings` qui fait `NEW.version := nextval('radar_immo.change_seq')` règle B1 sans toucher à l'outil, puis `version` redevient facultatif côté route.
-- Une fonction SQL `radar_immo.sync(...)` ou une vue qui porte la logique d'upsert/merge, appelée depuis la route. À condition que l'outil sache appeler une fonction, ce que je n'ai pas pu confirmer.
-
-## État des essais
-
-Deux brouillons de test existent dans l'outil : n°1 (`POST /v1/settings`) et n°2 (`POST /v1/probe`, sondes). Aucun n'est publié.
+1. Pas de valeur générée par le serveur (`nextval`), donc `version` devait venir du client.
+2. Pas d'upsert, erreurs SQL toutes opaques (`db_error`).
+3. Une erreur SQL attrapée empoisonnait toute la transaction (aucun savepoint) ; non retesté en passe 2.
+4. Pas de mise à jour par expression (fusion JSON, `+ 1`, `GREATEST`).
+5. `offset` et options inconnues ignorés sans erreur ; tri sur une colonne.
+6. Pas de moyen de vérifier un jeton externe, pas de `fetch`/`crypto`.
+7. Réponse 204 impossible sans `target`.
+Plus : clé de chemin obligatoire avec `target` (contrainte maintenue, contournée par `scope`), schéma de format contredisant le validateur sur les noms qualifiés (corrigé), types non documentés (corrigé).
